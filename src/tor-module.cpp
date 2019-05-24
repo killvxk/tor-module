@@ -1,7 +1,12 @@
-﻿
-#include <iostream>
+﻿#include "common.h"
+#include "Tor.h"
+
+using namespace tor;
 
 int main()
 {
-    std::cout << "Hello World!\n"; 
+	Tor tor;
+	tor.Initialize();
+
+	system("pause");
 }

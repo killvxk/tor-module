@@ -19,7 +19,17 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="src\common.cpp" />
+    <ClCompile Include="src\Consensus.cpp" />
+    <ClCompile Include="src\Relay.cpp" />
     <ClCompile Include="src\tor-module.cpp" />
+    <ClCompile Include="src\Tor.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="src\common.h" />
+    <ClInclude Include="src\Consensus.h" />
+    <ClInclude Include="src\Relay.h" />
+    <ClInclude Include="src\Tor.h" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>16.0</VCProjectVersion>
