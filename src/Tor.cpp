@@ -12,4 +12,6 @@ void tor::Tor::Initialize()
 	WSAStartup(0x0101, &WsaData);
 
 	consensus.Initialize();
+
+	consensus.FillPublicKey(0);
 }
