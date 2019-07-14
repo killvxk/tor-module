@@ -7,7 +7,7 @@ Get data from ip, port, query by win socket
 2 - recieved 0 bytes
 
 */
-int GetSocketData(string socket_ip, u_short socket_port, string& data, string query)
+int tor::GetSocketData(string socket_ip, u_short socket_port, string& data, string query)
 {
 	SOCKET Socket = socket(PF_INET, SOCK_STREAM, 0);
 	struct sockaddr_in sin;
@@ -27,7 +27,6 @@ int GetSocketData(string socket_ip, u_short socket_port, string& data, string qu
 
 	if (connect(Socket, (struct sockaddr*) &sin, sizeof(sin)) == SOCKET_ERROR)
 	{
-		cout << WSAGetLastError() << endl;
 		return 1;
 	}
 
@@ -56,7 +55,7 @@ int GetSocketData(string socket_ip, u_short socket_port, string& data, string qu
 	return 0;
 }
 
-int Base64Decode(string data, byte* output_data)
+int tor::Base64Decode(string data, byte* output_data)
 {
 	Base64Decoder decoder;
 	decoder.Put(reinterpret_cast<const byte*>(data.data()), data.size());
@@ -76,10 +75,85 @@ int Base64Decode(string data, byte* output_data)
 	return 0;
 }
 
+int tor::Base32Decode(byte* data, int data_length, byte* &output_data, unsigned long& output_length)
+{
+	//makes standart alphabet
+	int lookup[256];
+	const byte ALPHABET[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+	Base32Decoder::InitializeDecodingLookupArray(lookup, ALPHABET, 32, true);
+	AlgorithmParameters params = MakeParameters(Name::DecodingLookupArray(), (const int*)lookup);
+
+	Base32Decoder  decoder;
+	decoder.IsolatedInitialize(params);
+	decoder.Put(data, data_length);
+	decoder.MessageEnd();
+
+	output_length = decoder.MaxRetrievable();
+	output_data = new byte[output_length];
+	decoder.Get(output_data, output_length);
+
+	return 0;
+}
+
+int tor::Base32Encode(byte* data, int data_length, byte* &output_data, unsigned long& output_length)
+{
+	//makes standart alphabet
+	const byte ALPHABET[] = "abcdefghijklmnopqrstuvwxyz234567";//ABCDEFGHIJKLMNOPQRSTUVWXYZ234567
+	AlgorithmParameters params = MakeParameters(Name::EncodingLookupArray(), (const byte*)ALPHABET);
+
+	Base32Encoder encoder;
+	encoder.IsolatedInitialize(params);
+	encoder.Put(data, data_length);
+	encoder.MessageEnd();
+
+	output_length = encoder.MaxRetrievable();
+	output_data = new byte[output_length];
+	encoder.Get(output_data, output_length);
+
+	return 0;
+}
+
+int tor::GetSHA1(byte* date, int data_length, byte* hash)
+{
+	SHA1().CalculateDigest(hash, date, data_length);
+
+	return 0;
+}
+
+int tor::RSAEncrypt(byte* input_data, int input_size, byte* output_data, int& output_size, RSAES_OAEP_SHA_Encryptor& encryptor)
+{
+	AutoSeededRandomPool random_pool;
+	size_t ecl = encryptor.CiphertextLength(input_size);
+	SecByteBlock ciphertext(ecl);
+
+	encryptor.Encrypt(random_pool, input_data, input_size, ciphertext);
+
+	output_size = ciphertext.size();
+	memcpy(output_data, ciphertext.data(), output_size);
+
+	return 0;
+}
+
+int tor::AESEncrypt(byte* input_data, int input_size, byte* output_data, int& output_size, SecByteBlock key)
+{
+	byte* iv = new byte[16];
+	memset(iv, 0, 16);
+
+	CTR_Mode<AES>::Encryption encryptor;
+	encryptor.SetKeyWithIV(key, key.size(), iv);
+	encryptor.ProcessData(output_data, input_data, input_size);
+
+	output_size = input_size;
+
+	delete[] iv;
+
+	return 0;
+}
+
 /*
 transform byte hash to string like 'FFAB99'
 */
-string HashToString(byte* hash, int hash_length)
+string tor::HashToString(byte* hash, int hash_length)
 {
 	string output_string = "";
 	char buffer[3];
@@ -101,7 +175,7 @@ string HashToString(byte* hash, int hash_length)
 /*
 Expands IP structure by its string
 */
-int ExpandIpStructure(IP& ip_struct)
+int tor::ExpandIpStructure(IP& ip_struct)
 {
 	string buffer_string = "";
 	int i = 0, b = 0;
@@ -112,7 +186,7 @@ int ExpandIpStructure(IP& ip_struct)
 				buffer_string += ip_struct.ip_string[i];
 			}
 
-			ip_struct.octets[b] = stoi(ip_struct.ip_string.c_str());
+			ip_struct.octets[b] = stoi(buffer_string.c_str());
 			b++;
 
 			buffer_string.clear();
@@ -125,4 +199,14 @@ int ExpandIpStructure(IP& ip_struct)
 	}
 
 	return 0;
+}
+
+
+const wchar_t* tor::GetWC(const char* c)
+{
+	const size_t cSize = strlen(c) + 1;
+	wchar_t* wc = new wchar_t[cSize];
+	mbstowcs(wc, c, cSize);
+
+	return wc;
 }

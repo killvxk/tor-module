@@ -1,18 +1,20 @@
 #include "Consensus.h"
 
 
-int Consensus::Initialize()
+int tor::Consensus::Initialize()
 {
-	consensus_relays.push_back(Relay("194.109.206.212", "dizum", 443, 80));
+	consensus_relays.push_back(Relay("66.111.2.131", "Serge", 9001, 9030));
 
 	GetConsensus(consensus_relays[0]);
 
 	ParseConsensus();
 
+	cout << "Consensus parsed" << endl;
+
 	return 0;
 }
 
-int Consensus::GetConsensus(Relay consensus_relay)
+int tor::Consensus::GetConsensus(Relay consensus_relay)
 {
 	string query = "GET /tor/status-vote/current/consensus HTTP/1.0\r\nHost: " + consensus_relay.relay_ip.ip_string + "\r\n\r\n";
 
@@ -30,7 +32,7 @@ int Consensus::GetConsensus(Relay consensus_relay)
 	return 0;
 }
 
-int Consensus::ParseConsensus()
+int tor::Consensus::ParseConsensus()
 {
 	int line_end_ptr = 0;
 	string line_string = "";
@@ -52,28 +54,14 @@ int Consensus::ParseConsensus()
 		consensus_data.erase(0, line_end_ptr + 1);
 	}
 
-	
-	
-	ofstream ofs("relays.txt", ios_base::trunc);
-	for (int i = 0; i < relays.size(); i++) {
-		ofs << i << " " << relays[i].relay_name << " " << relays[i].relay_dirport << " " << relays[i].relay_identity_base64 << " " << relays[i].relay_ip.ip_string << " " << relays[i].relay_orport << " ";
-		//for (int b = 0; b < relays[i].flagsStr.size(); b++) {
-		//	ofs << relays[i].flagsStr[b] << " ";
-		//}
-		ofs << endl;
-	}
-	ofs.close();
-
-	
-
 	return 0;
 }
 
-int Consensus::FillPublicKey(Relay& relay)
+int tor::Consensus::FillPublicKey(CircuitRelay& relay)
 {
 	int key_relay_id = 0;
 	string descriptor_string, query, onion_key_str;
-	size_t key_itr_start, key_itr_end;
+	size_t key_itr;
 
 	while (true) {
 		while (true) {
@@ -89,9 +77,9 @@ int Consensus::FillPublicKey(Relay& relay)
 			break;
 	}
 
-	key_itr_start = descriptor_string.find("onion-key") + 41; // make itr after "onion-key" and "-----BEGIN RSA PUBLIC KEY-----"
+	key_itr = descriptor_string.find("onion-key") + 41; // make itr after "onion-key" and "-----BEGIN RSA PUBLIC KEY-----"
 														// onion key start
-	onion_key_str = descriptor_string.substr(key_itr_start);
+	onion_key_str = descriptor_string.substr(key_itr);
 	onion_key_str.erase(onion_key_str.find("-----END RSA PUBLIC KEY-----")); // erase after onion-key's end
 	// we don't need to delete all '\n' chars because of BERDecoder
 
@@ -106,10 +94,5 @@ int Consensus::FillPublicKey(Relay& relay)
 	relay.onion_encryptor = RSAES_OAEP_SHA_Encryptor(relay.onion_key); // create encryptor with onion-key
 
 	return 0;
-}
-
-int Consensus::FillPublicKey(int relay_id)
-{
-	return FillPublicKey(relays[relay_id]);
 }
 

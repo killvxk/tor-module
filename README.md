@@ -9,5 +9,5 @@ In you project settings you must add .lib files and all headers from source file
 За consensus отвечает одноименный класс в реализации. После вызова Initialize, объект получает consensus и парсит его. На текущий момент парсятся все узлы сети и их флаги.
 После иницизации в vector структуре хранятся все узлы сети, доступ к которым организован по id.
 
-#Realy
+# Realy
 Relay - узлы сети, через которые проходят все коммуникации. Заполняются они в функции ParseConsensus и храняться в vector. Для использования узла необходимо заполнить onion-key, использующийся на CREATE и EXTEND пакетах.

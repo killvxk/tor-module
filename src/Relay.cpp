@@ -1,6 +1,6 @@
 #include "Relay.h"
 
-Relay::Relay(string input_ip, string input_name, int input_orport, int input_dirport)
+tor::Relay::Relay(string input_ip, string input_name, int input_orport, int input_dirport)
 {
 	relay_ip.ip_string = input_ip;
 	relay_name = input_name;
@@ -8,7 +8,7 @@ Relay::Relay(string input_ip, string input_name, int input_orport, int input_dir
 	relay_dirport = input_dirport;
 }
 
-Relay::Relay(string full_string)
+tor::Relay::Relay(string full_string) : full_relay_string(full_string)
 {
 	string param_string;
 	int param_num = 0;
@@ -75,7 +75,7 @@ Relay::Relay(string full_string)
 	}
 }
 
-int Relay::ParseFlags(string flags_string)
+int tor::Relay::ParseFlags(string flags_string)
 {
 	size_t found = 0;
 

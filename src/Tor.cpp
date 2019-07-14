@@ -11,7 +11,15 @@ void tor::Tor::Initialize()
 	WSADATA WsaData;
 	WSAStartup(0x0101, &WsaData);
 
-	consensus.Initialize();
+	srand(time(0));
 
-	consensus.FillPublicKey(0);
+	consensus.Initialize();
+}
+
+int tor::Tor::ConnectToOnionServer(string onion_url)
+{
+	Service onion_service(consensus, onion_url);
+	onion_service.ConnectToService();
+
+	return 0;
 }

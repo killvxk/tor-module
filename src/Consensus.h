@@ -2,19 +2,23 @@
 
 #include "common.h"
 #include "Relay.h"
+#include "CircuitRelay.h"
 
-class Consensus {
-public:
-	vector<Relay> consensus_relays;
-	string consensus_data;
+namespace tor {
 
-	vector<Relay> relays;
-	int relays_num = 0;
+	class Consensus {
+	public:
+		vector<Relay> consensus_relays;
+		string consensus_data;
 
-	int Initialize();
-	int GetConsensus(Relay consensus_relay);
-	int ParseConsensus();
+		vector<Relay> relays;
+		int relays_num = 0;
 
-	int FillPublicKey(Relay& relay);
-	int FillPublicKey(int relay_id);
-};
+		int Initialize();
+		int GetConsensus(Relay consensus_relay);
+		int ParseConsensus();
+
+		int FillPublicKey(CircuitRelay& relay);
+	};
+
+}// namespace tor

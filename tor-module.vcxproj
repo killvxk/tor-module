@@ -19,17 +19,30 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="src\Cell.cpp" />
+    <ClCompile Include="src\Circuit.cpp" />
+    <ClCompile Include="src\CircuitRelay.cpp" />
     <ClCompile Include="src\common.cpp" />
     <ClCompile Include="src\Consensus.cpp" />
     <ClCompile Include="src\Relay.cpp" />
+    <ClCompile Include="src\Service.cpp" />
+    <ClCompile Include="src\SslSocket.cpp" />
     <ClCompile Include="src\tor-module.cpp" />
     <ClCompile Include="src\Tor.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="src\Cell.h" />
+    <ClInclude Include="src\Circuit.h" />
+    <ClInclude Include="src\CircuitRelay.h" />
     <ClInclude Include="src\common.h" />
     <ClInclude Include="src\Consensus.h" />
     <ClInclude Include="src\Relay.h" />
+    <ClInclude Include="src\Service.h" />
+    <ClInclude Include="src\SslSocket.h" />
     <ClInclude Include="src\Tor.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="cpp.hint" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>16.0</VCProjectVersion>
@@ -50,7 +63,7 @@
     <UseDebugLibraries>false</UseDebugLibraries>
     <PlatformToolset>v142</PlatformToolset>
     <WholeProgramOptimization>true</WholeProgramOptimization>
-    <CharacterSet>Unicode</CharacterSet>
+    <CharacterSet>NotSet</CharacterSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
@@ -108,10 +121,14 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>WIN32;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
+      <AdditionalIncludeDirectories>D:\github\tor-module\deps\headers;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalLibraryDirectories>D:\github\tor-module\deps\Debug\Win32;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>cryptlib.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">

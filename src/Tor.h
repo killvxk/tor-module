@@ -1,6 +1,6 @@
 #pragma once
 #include "common.h"
-#include "Consensus.h"
+#include "Service.h"
 
 namespace tor {
 
@@ -10,6 +10,7 @@ namespace tor {
 
 		Tor();
 		void Initialize();
+		int ConnectToOnionServer(string onion_url);
 		string GetOnionData(string onion_url, string query);
 	};
 
