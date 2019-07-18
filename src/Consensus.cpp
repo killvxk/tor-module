@@ -3,7 +3,7 @@
 
 int tor::Consensus::Initialize()
 {
-	consensus_relays.push_back(Relay("66.111.2.131", "Serge", 9001, 9030));
+	consensus_relays.push_back(Relay("194.109.206.212", "dizum", 443, 80));
 
 	GetConsensus(consensus_relays[0]);
 
@@ -92,6 +92,8 @@ int tor::Consensus::FillPublicKey(CircuitRelay& relay)
 
 	relay.onion_key.BERDecodePublicKey(queue, false, queue.MaxRetrievable()); // fill onion-key to object
 	relay.onion_encryptor = RSAES_OAEP_SHA_Encryptor(relay.onion_key); // create encryptor with onion-key
+	relay.onion_key_string = onion_key_str;
+	Base64Decode(onion_key_str, relay.onion_key_bytes, relay.onion_key_bytes_size);
 
 	return 0;
 }

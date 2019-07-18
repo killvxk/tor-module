@@ -11,5 +11,10 @@ int main()
 	//http://duskgytldkxiuqc6.onion/fedpapers/federndx.htm
 	tor.ConnectToOnionServer("duskgytldkxiuqc6.onion");
 
+	string answer = "";
+	tor.GetOnionData("/index.html", answer);
+
+	cout << answer << endl;
+
 	system("pause");
 }

@@ -1,5 +1,9 @@
 #include "CircuitRelay.h"
 
+tor::CircuitRelay::CircuitRelay()
+{
+}
+
 tor::CircuitRelay::CircuitRelay(Relay relay, unsigned int circuit_id) : Relay(relay.full_relay_string), circuit_id(circuit_id)
 {
 	
@@ -41,46 +45,7 @@ int tor::CircuitRelay::CreateOnionSkin(int& output_size, byte* output_data)
 
 int tor::CircuitRelay::HybridEncryption(byte* output_data, int& output_size, byte* input_data, int input_size)
 {
-	if (input_size < PK_DATA_LEN) {
-		tor::RSAEncrypt(input_data, input_size, output_data, output_size, onion_encryptor);
-	}
-	else {
-		// generate random AES key
-		SecByteBlock key(AES::DEFAULT_KEYLENGTH);
-		AutoSeededRandomPool random_pool;
-		random_pool.GenerateBlock(key, key.size());
-
-		// fill first raw part
-		byte* raw_first = new byte[PK_DATA_LEN_WITH_KEY];
-		memcpy(raw_first, input_data, PK_DATA_LEN_WITH_KEY);
-
-		// fill second raw part
-		byte* raw_second = new byte[input_size - PK_DATA_LEN_WITH_KEY];
-		memcpy(raw_second, input_data + PK_DATA_LEN_WITH_KEY, input_size - PK_DATA_LEN_WITH_KEY);
-
-		// copy AES key and first raw part
-		int uncrypted_first_size = key.size() + PK_DATA_LEN_WITH_KEY;
-		byte * uncrypted_first = new byte[uncrypted_first_size];
-		memcpy(uncrypted_first, key.data(), key.size());
-		memcpy(uncrypted_first + key.size(), raw_first, PK_DATA_LEN_WITH_KEY);
-
-		int crypted_first_size = 0, crypted_second_size = 0;
-		byte * crypted_first = new byte[PK_ENC_LEN];
-		tor::RSAEncrypt(uncrypted_first, uncrypted_first_size, crypted_first, crypted_first_size, onion_encryptor);
-		byte * crypted_second = new byte[input_size - PK_DATA_LEN_WITH_KEY];
-
-		tor::AESEncrypt(raw_second, input_size - PK_DATA_LEN_WITH_KEY, crypted_second, crypted_second_size, key);
-
-		memcpy(output_data, crypted_first, crypted_first_size);
-		memcpy(output_data + crypted_first_size, crypted_second, input_size - PK_DATA_LEN_WITH_KEY);
-		output_size = crypted_first_size + crypted_second_size;
-
-		delete[] raw_first;
-		delete[] raw_second;
-		delete[] uncrypted_first;
-		delete[] crypted_first;
-		delete[] crypted_second;
-	}
+	tor::HybridEncryption(output_data, output_size, input_data, input_size, onion_encryptor);
 
 	return 0;
 }
@@ -147,6 +112,25 @@ int tor::CircuitRelay::EncryptCell(byte* cell_bytes, int cell_size)
 int tor::CircuitRelay::DecryptCell(byte* cell_bytes, int cell_size)
 {
 	encryptor_backward->ProcessData(cell_bytes + 5, cell_bytes + 5, cell_size - 5);
+
+	return 0;
+}
+
+int tor::CircuitRelay::DHInititalize()
+{
+	Integer dh_prime("0xFFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD129024E088A67CC74020BBEA63B139B22514A08798E3404DDEF9519B3CD3A431B302B0A6DF25F14374FE1356D6D51C245E485B576625E7EC6F44C42E9A637ED6B0BFF5CB6F406B7EDEE386BFB5A899FA5AE9F24117C4B1FE649286651ECE65381FFFFFFFFFFFFFFFF");
+	Integer dh_generator = 2;
+
+	AutoSeededRandomPool random_pool;
+
+	dh_handle.AccessGroupParameters().Initialize(dh_prime, dh_generator);
+
+	private_a_number = SecByteBlock(dh_handle.PrivateKeyLength());
+	public_a_number = SecByteBlock(dh_handle.PublicKeyLength());
+	public_b_number = SecByteBlock(dh_handle.PublicKeyLength());
+	secret_key_number = SecByteBlock(dh_handle.AgreedValueLength());
+
+	dh_handle.GenerateKeyPair(random_pool, private_a_number, public_a_number);
 
 	return 0;
 }

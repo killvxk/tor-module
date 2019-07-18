@@ -1,7 +1,7 @@
 #include "Cell.h"
 
-tor::Cell::Cell(CellType cell_type, CellMode cell_mode, unsigned long circuit_id) : 
-	cell_type(cell_type), cell_mode(cell_mode), circuit_id(circuit_id)
+tor::Cell::Cell(CellType cell_type, CellMode cell_mode, unsigned long circuit_id, short stream_id) :
+	cell_type(cell_type), cell_mode(cell_mode), circuit_id(circuit_id), stream_id(stream_id)
 {
 	if (cell_mode == tor::Cell::CellMode::GET)
 		return;
@@ -18,8 +18,8 @@ tor::Cell::Cell(CellType cell_type, CellMode cell_mode, unsigned long circuit_id
 	}
 }
 
-tor::Cell::Cell(CellType cell_type, PayloadCellType cell_payload_type, CellMode cell_mode, unsigned long circuit_id) : 
-	cell_type(cell_type), cell_payload_type(cell_payload_type), cell_mode(cell_mode), circuit_id(circuit_id)
+tor::Cell::Cell(CellType cell_type, PayloadCellType cell_payload_type, CellMode cell_mode, unsigned long circuit_id, short stream_id) :
+	cell_type(cell_type), cell_payload_type(cell_payload_type), cell_mode(cell_mode), circuit_id(circuit_id), stream_id(stream_id)
 {
 	if (cell_mode == tor::Cell::CellMode::GET)
 		return;
@@ -51,7 +51,7 @@ int tor::Cell::FillCircuitId()
 	return 0;
 }
 
-int tor::Cell::FillRelayPayload(byte* payload, short payload_size, short stream_id)
+int tor::Cell::FillRelayPayload(byte* payload, short payload_size)
 {
 	cell_bytes[6] = 0; // 'recognized'
 	cell_bytes[7] = 0; // must be zeros
@@ -209,5 +209,86 @@ int tor::Cell::FillExtend(byte* onion_skin, short onion_skin_size, tor::IP relay
 
 	FillRelayPayload(payload, payload_size);
 
+	return 0;
+}
+
+int tor::Cell::FillHttpGet(string service_address, string query)
+{
+	FillCircuitId();
+
+	string payload = "GET " + query + " HTTP/1.0\r\nHost: " + service_address + "\r\n\r\n";
+
+	FillRelayPayload((byte*)payload.c_str(), payload.length());
+
+	return 0;
+}
+
+int tor::Cell::FillFetchDescriptor(ByteSeq descriptor_id, string host_ip)
+{
+	FillCircuitId();
+
+	string payload = "GET /tor/rendezvous2/";
+	for (int i = 0; i < descriptor_id.size; i++)
+		payload += descriptor_id.pointer[i];
+	payload += " HTTP/1.0\r\nHost: " + host_ip + "\r\n\r\n";
+
+	FillRelayPayload((byte*)payload.c_str(), payload.length());
+
+	return 0;
+}
+
+int tor::Cell::FillRendezvous(byte* rendezvous_cookie)
+{
+	FillCircuitId();
+
+	// create cell payload
+	short payload_size = 20; // rendezvous cookie size = 20
+	byte* payload = new byte[payload_size];
+	memcpy(&payload[0], rendezvous_cookie, payload_size); // rendezvous cookie
+
+	FillRelayPayload(payload, payload_size);
+
+	return 0;
+}
+
+int tor::Cell::FillBeginStream(string service_address, short service_port)
+{
+	FillCircuitId();
+
+	string payload;
+
+	if (service_address.find(".onion") != string::npos) {
+		payload += service_address.substr(0, service_address.find(".onion") - 1);
+	}
+	else {
+		payload += service_address;
+	}
+	payload += ':';
+	payload += to_string(service_port);
+	payload += '\0';
+
+	FillRelayPayload((byte*)payload.data(), payload.length());
+
+	return 0;
+}
+
+int tor::Cell::FillIntroduce1()
+{
+	FillCircuitId();
+	/*
+	// create cell payload
+	short payload_size = 20 + 1 + 2 + 
+	byte* payload = new byte[payload_size];
+	payload[0] = relay_ip.octets[0]; // ip
+	payload[1] = relay_ip.octets[1];
+	payload[2] = relay_ip.octets[2];
+	payload[3] = relay_ip.octets[3];
+	payload[4] = HIGH(relay_port); // port
+	payload[5] = LOW(relay_port);
+	memcpy(&payload[6], onion_skin, onion_skin_size); // handshake data
+	memcpy(&payload[6] + onion_skin_size, fingerprint, HASH_LEN); // fingerprint
+
+	FillRelayPayload(payload, payload_size);
+	*/
 	return 0;
 }

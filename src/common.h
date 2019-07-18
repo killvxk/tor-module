@@ -53,8 +53,13 @@ using namespace std;
 using namespace CryptoPP;
 
 namespace tor {
+
+	struct ByteSeq {
+		byte* pointer;
+		int size;
+	};
 	struct IP {
-		int octets[4];
+		byte octets[4];
 
 		string ip_string;
 	};
@@ -63,6 +68,22 @@ namespace tor {
 	union word16 {
 		byte bytes[4];
 		int data;
+	};
+
+	struct IntroductionPoint {
+		string identifier;
+		string ip;
+		int port;
+		string onion_key;
+		string service_key;
+		int relay_number;
+
+		ByteSeq dec_service_key;
+
+		RSA::PublicKey public_onion_key;
+		RSAES_OAEP_SHA_Encryptor encryptor_onion;
+		RSA::PublicKey public_service_key;
+		RSAES_OAEP_SHA_Encryptor encryptor_service;
 	};
 
 
@@ -102,13 +123,17 @@ namespace tor {
 	int GetSocketData(string socket_ip, u_short socket_port, string& data, string query = "");
 
 	int Base64Decode(string data, byte* output_data);
+	int Base64Decode(string data, byte* &output_data, int &output_size);
+	int Base64Decode(string data, string &output_data);
 	int Base32Decode(byte* data, int data_length, byte* &output_data, unsigned long& output_length);
 	int Base32Encode(byte* data, int data_length, byte* &output_data, unsigned long& output_length);
 
-	int GetSHA1(byte* date, int data_length, byte* hash);
+	int GetSHA1(byte* data, int data_length, byte* hash);
 
 	int RSAEncrypt(byte* input_data, int input_size, byte* output_data, int& output_size, RSAES_OAEP_SHA_Encryptor &encryptor);
 	int AESEncrypt(byte* input_data, int input_size, byte* output_data, int& output_size, SecByteBlock key);
+
+	int HybridEncryption(byte* output_data, int& output_size, byte* input_data, int input_size, RSAES_OAEP_SHA_Encryptor& custom_encryptor);
 
 	string HashToString(byte* hash, int hash_length = HASH_LEN);
 	int ExpandIpStructure(IP& ip_struct);

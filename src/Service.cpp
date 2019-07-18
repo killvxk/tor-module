@@ -21,6 +21,28 @@ int tor::Service::ConnectToService()
 	circuit_descriptor.Initialize(onion_url, consensus, descriptors, descriptor_relays);
 	circuit_descriptor.SetCircuit(2, Circuit::CircuitType::DescriptorFetch);
 
+	ParseIntroductionPoints(circuit_descriptor.introduction_points_string);
+
+	// set second circuit to rendezvous
+	circuit_rendezvous.Initialize(onion_url, consensus);
+	circuit_rendezvous.SetCircuit(2, Circuit::CircuitType::Rendezvous);
+
+	// set third circuit to introduce our rendezvous circuit
+	circuit_introducing.Initialize(onion_url, consensus, &introduction_points[1], &circuit_rendezvous.circuit_relays.back(), &onion_relay, circuit_rendezvous.rendezvous_cookie);
+	circuit_introducing.SetCircuit(2, Circuit::CircuitType::Introducing);
+
+	// finish introducing
+	circuit_rendezvous.FinishRendezvous(&onion_relay);
+
+	return 0;
+}
+
+int tor::Service::MakeRequest(string query, string& answer)
+{
+	circuit_rendezvous.CreateRelayStream(onion_port);
+
+	circuit_rendezvous.MakeStreamRequest(query, answer);
+
 	return 0;
 }
 
@@ -105,7 +127,12 @@ int tor::Service::GetResponsibleDirectories()
 		unsigned long descriptor_size;
 		Base32Encode(second_hash, CryptoPP::SHA1::DIGESTSIZE, descriptor, descriptor_size);
 
-		descriptors.push_back(string(reinterpret_cast<char*>(descriptor)));
+		ByteSeq descriptor_struct;
+		descriptor_struct.size = descriptor_size;
+		descriptor_struct.pointer = new byte[descriptor_size];
+		memcpy(descriptor_struct.pointer, descriptor, descriptor_size);
+
+		descriptors.push_back(descriptor_struct);
 
 		delete[] descriptor;
 
@@ -128,5 +155,157 @@ int tor::Service::GetResponsibleDirectories()
 	delete[] z_part;
 	delete[] permanent_id;
 
+	return 0;
+}
+
+int tor::Service::ParseIntroductionPoints(string descriptor)
+{
+	string raw_points_list;
+	int begin_position = 0, end_position = 0;
+	begin_position = descriptor.find("-----BEGIN MESSAGE-----");
+	end_position = descriptor.find("-----END MESSAGE-----");
+	// cut the list message
+	raw_points_list = descriptor.substr(begin_position + 23, end_position - begin_position - 23);
+
+	// erase all \n chars
+	while (raw_points_list.find("\n") != string::npos) {
+		raw_points_list.erase(raw_points_list.begin() + raw_points_list.find("\n"));
+	}
+
+	string points_list;
+	Base64Decode(raw_points_list, points_list);
+	
+	// TODO: rewrite it
+	tor::IntroductionPoint buffer_point;
+	while (points_list.find("introduction-point") != string::npos) {
+		int i = 0;
+
+		//identifier
+		while (points_list[i] != ' ') {
+			i++;
+		}
+		i++;
+		string identifier = "";
+		while (points_list[i] != '\n') {
+			identifier += points_list[i];
+			i++;
+		}
+		i++;
+
+		//ip
+		while (points_list[i] != ' ') {
+			i++;
+		}
+		i++;
+		string ip = "";
+		while (points_list[i] != '\n') {
+			ip += points_list[i];
+			i++;
+		}
+		i++;
+
+		//port
+		while (points_list[i] != ' ') {
+			i++;
+		}
+		i++;
+		string port = "";
+		while (points_list[i] != '\n') {
+			port += points_list[i];
+			i++;
+		}
+		i++;
+
+		//onion key
+		begin_position = points_list.find("-----BEGIN RSA PUBLIC KEY-----");
+		end_position = points_list.find("-----END RSA PUBLIC KEY-----");
+		string onionKey = points_list.substr(begin_position + 30, end_position - begin_position - 30);
+		points_list[begin_position + 2] = 'X';
+		points_list[end_position + 2] = 'X';
+		while (onionKey.find("\n") != string::npos) {
+			onionKey.erase(onionKey.begin() + onionKey.find("\n"));
+		}
+
+		//service key
+		begin_position = points_list.find("-----BEGIN RSA PUBLIC KEY-----");
+		end_position = points_list.find("-----END RSA PUBLIC KEY-----");
+		points_list[begin_position + 2] = 'X';
+		points_list[end_position + 2] = 'X';
+		string serviceKey = points_list.substr(begin_position + 30, end_position - begin_position - 30);
+		while (serviceKey.find("\n") != string::npos) {
+			serviceKey.erase(serviceKey.begin() + serviceKey.find("\n"));
+		}
+
+		points_list[0] = 'X';
+		if (points_list.find("introduction-point") != string::npos) {
+			points_list.erase(points_list.begin(), points_list.begin() + points_list.find("introduction-point"));
+		}
+
+		buffer_point.identifier = identifier;
+		buffer_point.ip = ip;
+		buffer_point.port = atoi(port.c_str());
+		buffer_point.onion_key = onionKey;
+		buffer_point.service_key = serviceKey;
+
+		cout << "Onion key: " << endl;
+		cout << onionKey << endl;
+		cout << "Service key: " << endl;
+		cout << serviceKey << endl;
+
+		ByteQueue queue;
+		Base64Decoder decoder;
+		decoder.Attach(new Redirector(queue));
+		decoder.Put((const byte*)onionKey.c_str(), onionKey.length());
+		decoder.MessageEnd();
+		buffer_point.public_onion_key.BERDecodePublicKey(queue, false, queue.MaxRetrievable());
+		RSAES_OAEP_SHA_Encryptor encryptorDop(buffer_point.public_onion_key);
+		buffer_point.encryptor_onion = encryptorDop;
+
+		ByteQueue queue2;
+		Base64Decoder decoder2;
+		decoder2.Attach(new Redirector(queue2));
+		decoder2.Put((const byte*)serviceKey.c_str(), serviceKey.length());
+		decoder2.MessageEnd();
+		buffer_point.public_service_key.BERDecodePublicKey(queue2, false, queue2.MaxRetrievable());
+		RSAES_OAEP_SHA_Encryptor encryptorDop2(buffer_point.public_service_key);
+		buffer_point.encryptor_service = encryptorDop2;
+
+
+		for (int i = 0; i < consensus.relays_num; i++) {
+			if (consensus.relays[i].relay_ip.ip_string == ip && consensus.relays[i].relay_orport == atoi(port.c_str())) {
+				buffer_point.relay_number = i;
+			}
+		}
+
+		Base64Decoder decoder3;
+		decoder3.Put((byte*)serviceKey.data(), serviceKey.size());
+		decoder3.MessageEnd();
+
+		word64 size = decoder3.MaxRetrievable();
+		if (size && size <= SIZE_MAX)
+		{
+			buffer_point.dec_service_key.pointer = new byte[size];
+			decoder3.Get(buffer_point.dec_service_key.pointer, size);
+			buffer_point.dec_service_key.size = size;
+		}
+
+		introduction_points.push_back(buffer_point);
+	}
+
+	/*
+	cout << endl;
+	for (int i = 0; i < introduction_points.size(); i++) {
+		cout << "Intro point #" << i << endl;
+		cout << "Relay num: " << introduction_points[i].relay_number << endl;
+		cout << "identifier: " << introduction_points[i].identifier << endl;
+		cout << "ip: " << introduction_points[i].ip << endl;
+		cout << "port: " << introduction_points[i].port << endl;
+		cout << "onionKey: " << introduction_points[i].onion_key << endl;
+		cout << "serviceKey: " << introduction_points[i].service_key << endl;
+		cout << endl;
+	}
+	cout << endl;
+	*/
+	
 	return 0;
 }

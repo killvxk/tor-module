@@ -18,6 +18,9 @@ namespace tor {
 		// RSA
 		RSA::PublicKey onion_key; // public onion-key rsa (uses in CREATE, EXTEND cells)
 		RSAES_OAEP_SHA_Encryptor onion_encryptor;
+		string onion_key_string;
+		byte* onion_key_bytes = nullptr;
+		int onion_key_bytes_size = 0;
 		// DH
 		SecByteBlock private_a_number;
 		SecByteBlock public_a_number;
@@ -40,7 +43,7 @@ namespace tor {
 	   */
 		byte d_forward[HASH_LEN], d_backward[HASH_LEN], key_forward[KEY_LEN], key_backward[KEY_LEN];
 
-
+		CircuitRelay();
 		CircuitRelay(Relay relay, unsigned int circuit_id);
 
 		int ConnectSsl();
@@ -52,6 +55,8 @@ namespace tor {
 
 		int EncryptCell(byte* cell_bytes, int cell_size);
 		int DecryptCell(byte* cell_bytes, int cell_size);
+
+		int DHInititalize();
 	};
 
 }// namespace tor

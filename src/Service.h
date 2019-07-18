@@ -10,8 +10,13 @@ namespace tor {
 		Consensus& consensus;
 
 		string onion_url;
-		vector<string> descriptors;
+		short onion_port = 80;
+		vector<ByteSeq> descriptors;
 		vector<Relay*> descriptor_relays;
+		
+		CircuitRelay onion_relay;
+
+		vector<IntroductionPoint> introduction_points;
 
 		Circuit circuit_descriptor; // need to get descriptor with intro points
 		Circuit circuit_rendezvous; // main channel
@@ -20,7 +25,9 @@ namespace tor {
 		Service(Consensus &consensus, string onion_url);
 
 		int ConnectToService();
+		int MakeRequest(string query, string &answer);
 		int GetResponsibleDirectories();
+		int ParseIntroductionPoints(string descriptor);
 	};
 
-}// namespace tor#pragma once
+}// namespace tor

@@ -75,6 +75,35 @@ int tor::Base64Decode(string data, byte* output_data)
 	return 0;
 }
 
+int tor::Base64Decode(string data, byte* &output_data, int& output_size)
+{
+	Base64Decoder decoder;
+	decoder.Put(reinterpret_cast<const byte*>(data.data()), data.size());
+	decoder.MessageEnd();
+
+	size_t size = decoder.MaxRetrievable();
+	if (size && size <= SIZE_MAX)
+	{
+		output_size = size;
+		output_data = new byte[size];
+		decoder.Get(output_data, size);
+	}
+	else
+		return 1;
+	return 0;
+}
+
+int tor::Base64Decode(string data, string &output_data)
+{
+	byte* buffer = new byte[data.length()];
+	int size = 0;
+	Base64Decode(data, buffer, size);
+
+	output_data.resize(size + 1);
+	memcpy(&output_data[0], buffer, size);
+	return 0;
+}
+
 int tor::Base32Decode(byte* data, int data_length, byte* &output_data, unsigned long& output_length)
 {
 	//makes standart alphabet
@@ -113,9 +142,9 @@ int tor::Base32Encode(byte* data, int data_length, byte* &output_data, unsigned 
 	return 0;
 }
 
-int tor::GetSHA1(byte* date, int data_length, byte* hash)
+int tor::GetSHA1(byte* data, int data_length, byte* hash)
 {
-	SHA1().CalculateDigest(hash, date, data_length);
+	SHA1().CalculateDigest(hash, data, data_length);
 
 	return 0;
 }
@@ -146,6 +175,52 @@ int tor::AESEncrypt(byte* input_data, int input_size, byte* output_data, int& ou
 	output_size = input_size;
 
 	delete[] iv;
+
+	return 0;
+}
+
+int tor::HybridEncryption(byte* output_data, int& output_size, byte* input_data, int input_size, RSAES_OAEP_SHA_Encryptor& custom_encryptor)
+{
+	if (input_size < PK_DATA_LEN) {
+		tor::RSAEncrypt(input_data, input_size, output_data, output_size, custom_encryptor);
+	}
+	else {
+		// generate random AES key
+		SecByteBlock key(AES::DEFAULT_KEYLENGTH);
+		AutoSeededRandomPool random_pool;
+		random_pool.GenerateBlock(key, key.size());
+
+		// fill first raw part
+		byte* raw_first = new byte[PK_DATA_LEN_WITH_KEY];
+		memcpy(raw_first, input_data, PK_DATA_LEN_WITH_KEY);
+
+		// fill second raw part
+		byte* raw_second = new byte[input_size - PK_DATA_LEN_WITH_KEY];
+		memcpy(raw_second, input_data + PK_DATA_LEN_WITH_KEY, input_size - PK_DATA_LEN_WITH_KEY);
+
+		// copy AES key and first raw part
+		int uncrypted_first_size = key.size() + PK_DATA_LEN_WITH_KEY;
+		byte * uncrypted_first = new byte[uncrypted_first_size];
+		memcpy(uncrypted_first, key.data(), key.size());
+		memcpy(uncrypted_first + key.size(), raw_first, PK_DATA_LEN_WITH_KEY);
+
+		int crypted_first_size = 0, crypted_second_size = 0;
+		byte * crypted_first = new byte[PK_ENC_LEN];
+		tor::RSAEncrypt(uncrypted_first, uncrypted_first_size, crypted_first, crypted_first_size, custom_encryptor);
+		byte * crypted_second = new byte[input_size - PK_DATA_LEN_WITH_KEY];
+
+		tor::AESEncrypt(raw_second, input_size - PK_DATA_LEN_WITH_KEY, crypted_second, crypted_second_size, key);
+
+		memcpy(output_data, crypted_first, crypted_first_size);
+		memcpy(output_data + crypted_first_size, crypted_second, input_size - PK_DATA_LEN_WITH_KEY);
+		output_size = crypted_first_size + crypted_second_size;
+
+		delete[] raw_first;
+		delete[] raw_second;
+		delete[] uncrypted_first;
+		delete[] crypted_first;
+		delete[] crypted_second;
+	}
 
 	return 0;
 }

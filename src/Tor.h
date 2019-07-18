@@ -8,10 +8,12 @@ namespace tor {
 	public:
 		Consensus consensus;
 
+		vector<Service> connected_services;
+
 		Tor();
 		void Initialize();
 		int ConnectToOnionServer(string onion_url);
-		string GetOnionData(string onion_url, string query);
+		int GetOnionData(string query, string &output);
 	};
 
 }// namespace tor

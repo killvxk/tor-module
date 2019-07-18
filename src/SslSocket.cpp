@@ -115,7 +115,7 @@ int SSLSocket::GetData(BYTE* &message, int& size)
 {
 	PBYTE pbIoBuffer;
 	DWORD cbIoBufferLength;
-	SECURITY_STATUS scRet;
+	ULONG scRet;
 
 	cbIoBufferLength = Sizes.cbHeader + Sizes.cbMaximumMessage + Sizes.cbTrailer;
 	pbIoBuffer = (PBYTE)LocalAlloc(LMEM_FIXED, cbIoBufferLength);
@@ -137,7 +137,7 @@ int SSLSocket::GetData(BYTE* &message, int& size)
 	cbIoBuffer = 0;
 	scRet = 0;
 
-
+	read_more_data:
 	if (cbIoBuffer == 0 || scRet == SEC_E_INCOMPLETE_MESSAGE)
 	{
 		cbData = recv(Socket, (char*)pbIoBuffer + cbIoBuffer, cbIoBufferLength - cbIoBuffer, 0);
@@ -183,6 +183,9 @@ int SSLSocket::GetData(BYTE* &message, int& size)
 		scRet != SEC_I_RENEGOTIATE &&
 		scRet != SEC_I_CONTEXT_EXPIRED)
 	{
+		if (scRet == SEC_E_INCOMPLETE_MESSAGE)
+			goto read_more_data;
+
 		DebugLog("Error returned by DecryptMessage | scRet:" + to_string(scRet));
 		return scRet;
 	}
@@ -414,6 +417,7 @@ int SSLSocket::ConnectToServer(char* pszServerName, int iPortNumber)
 	if (connect(Socket, (struct sockaddr*) & sin, sizeof(sin)) == SOCKET_ERROR)
 	{
 		DebugLog("Error connecting to server | WSAGetLastError:" + to_string(WSAGetLastError()));
+		DebugLog(string(pszServerName) + " " + to_string(iPortNumber));
 		closesocket(Socket);
 		return WSAGetLastError();
 	}

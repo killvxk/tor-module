@@ -60,17 +60,18 @@ namespace tor {
 			GET
 		} cell_mode;
 
-		Cell(CellType cell_type, CellMode cell_mode, unsigned long circuit_id);
-		Cell(CellType cell_type, PayloadCellType cell_payload_type, CellMode cell_mode, unsigned long circuit_id);
+		Cell(CellType cell_type, CellMode cell_mode, unsigned long circuit_id, short stream_id = 0);
+		Cell(CellType cell_type, PayloadCellType cell_payload_type, CellMode cell_mode, unsigned long circuit_id, short stream_id = 0);
 		~Cell();
 
 
 		byte* cell_bytes;
 		int cell_size = 0;
 		unsigned long circuit_id;
+		short stream_id = 0;
 
 		int FillCircuitId();
-		int FillRelayPayload(byte* payload, short payload_size, short stream_id = 0);
+		int FillRelayPayload(byte* payload, short payload_size);
 		int ComputeDigest(vector<byte> &forward_bytes);
 
 		int FillVersions();
@@ -80,14 +81,15 @@ namespace tor {
 		int FillExtend2(byte* onion_skin, short onion_skin_size, tor::IP relay_ip, short relay_port);
 		int FillExtend(byte* onion_skin, short onion_skin_size, tor::IP relay_ip, short relay_port, byte *fingerprint);
 
-		int CreateDirStream(byte* aesKey, vector<byte>& hashBytes);
-		int FillDescriptor(string descriptorId, string hostIp, vector<byte>& hashBytes);
-		int FillIntroduce(byte* payload, int payloadSize, vector<byte>& hashBytes);
-		int FillRendezvous(byte* cookie, vector<byte>& hashBytes);
-		int FillStartData(string host, int port, vector<byte>& hashBytes);
+		int FillHttpGet(string service_address, string query);
 
-		int FormHttpQueryGet(string query, string onionUrl, vector<byte>& hashBytes);
+		// version 2
+		int FillFetchDescriptor(ByteSeq descriptor_id, string host_ip);
+		int FillRendezvous(byte* rendezvous_cookie);
+		int FillBeginStream(string service_address, short service_port);
 
-		//void FinishHandshakeExtended(SecByteBlock& pubB, SecByteBlock& privA, SecByteBlock& secretKey, DH& dh, byte* keyMaterial);
+		// version 3
+		int FillIntroduce1();
+
 	};
 } // namespace tor

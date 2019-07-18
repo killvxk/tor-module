@@ -18,8 +18,16 @@ void tor::Tor::Initialize()
 
 int tor::Tor::ConnectToOnionServer(string onion_url)
 {
-	Service onion_service(consensus, onion_url);
-	onion_service.ConnectToService();
+	connected_services.push_back(Service(consensus, onion_url));
+
+	connected_services.back().ConnectToService();
+
+	return 0;
+}
+
+int tor::Tor::GetOnionData(string query, string& output)
+{
+	connected_services.back().MakeRequest(query, output);
 
 	return 0;
 }
