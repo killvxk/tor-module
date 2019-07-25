@@ -35,7 +35,7 @@ tor::Cell::Cell(CellType cell_type, PayloadCellType cell_payload_type, CellMode 
 tor::Cell::~Cell()
 {
 	cell_size = 0;
-	//delete[] cell_bytes;
+	delete[] cell_bytes;
 }
 
 int tor::Cell::FillCircuitId()

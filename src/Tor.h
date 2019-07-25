@@ -11,6 +11,8 @@ namespace tor {
 		vector<Service> connected_services;
 
 		Tor();
+		~Tor();
+
 		void Initialize();
 		int ConnectToOnionServer(string onion_url);
 		int GetOnionData(string query, string &output);

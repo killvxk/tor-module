@@ -17,6 +17,7 @@ namespace tor {
 
 		Consensus &consensus;
 		unsigned long circuit_id = 0;
+		unsigned short stream_id = 1;
 		string onion_url;
 		short onion_port;
 
@@ -28,7 +29,7 @@ namespace tor {
 		string introduction_points_string;
 
 		// for rendezvous and introducing circiuts
-		byte* rendezvous_cookie;
+		byte* rendezvous_cookie = nullptr;
 
 		// for introducing circuit
 		IntroductionPoint *introduction_point = nullptr;
@@ -36,7 +37,8 @@ namespace tor {
 		CircuitRelay *rendzvous_relay = nullptr;
 		CircuitRelay *onion_relay = nullptr;
 
-		Circuit(string onion_url, Consensus &consensus);
+		Circuit(string onion_url, Consensus &consensus, int circuit_id);
+		~Circuit();
 
 		int Initialize(string onion_url, Consensus& consensus, vector<ByteSeq> descriptors, vector<Relay*> descriptor_relays); // for descriptor fetch
 		int Initialize(string onion_url, Consensus& consensus); // for rendezvous
@@ -49,6 +51,8 @@ namespace tor {
 		int AddRelayToCircuit(Relay& relay);
 		int CreateRelayStream(short service_port);
 		int MakeStreamRequest(string data, string &output);
+
+		int DestroyCircuit();
 
 		// version 2
 		int CreateDirStream();

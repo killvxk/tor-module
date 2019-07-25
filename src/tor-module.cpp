@@ -5,16 +5,20 @@ using namespace tor;
 
 int main()
 {
-	Tor tor;
-	tor.Initialize();
-	
-	//http://duskgytldkxiuqc6.onion/fedpapers/federndx.htm
-	tor.ConnectToOnionServer("duskgytldkxiuqc6.onion");
+	while (true) {
+		Tor tor;
+		tor.Initialize();
 
-	string answer = "";
-	tor.GetOnionData("/index.html", answer);
+		//http://duskgytldkxiuqc6.onion/fedpapers/federndx.htm
+		tor.ConnectToOnionServer("duskgytldkxiuqc6.onion");
 
-	cout << answer << endl;
+		string answer = "";
+		tor.GetOnionData("/index.html", answer);
 
-	system("pause");
+		cout << answer << endl;
+
+		tor.~Tor();
+
+		system("pause");
+	}
 }

@@ -2,11 +2,23 @@
 tor::Service::Service(Consensus& consensus, string onion_url) : 
 	consensus(consensus), 
 	onion_url(onion_url), 
-	circuit_descriptor(onion_url, consensus),
-	circuit_rendezvous(onion_url, consensus),
-	circuit_introducing(onion_url, consensus)
+	circuit_descriptor(onion_url, consensus, circuit_inc++),
+	circuit_rendezvous(onion_url, consensus, circuit_inc++),
+	circuit_introducing(onion_url, consensus, circuit_inc++)
 {
 	
+}
+
+tor::Service::~Service()
+{
+	/*
+	if (circuit_descriptor.circuit_relays.size())
+		circuit_descriptor.~Circuit();
+	if (circuit_rendezvous.circuit_relays.size())
+		circuit_rendezvous.~Circuit();
+	if (circuit_introducing.circuit_relays.size())
+		circuit_introducing.~Circuit();
+		*/
 }
 
 int tor::Service::ConnectToService()
@@ -23,6 +35,8 @@ int tor::Service::ConnectToService()
 
 	ParseIntroductionPoints(circuit_descriptor.introduction_points_string);
 
+	circuit_descriptor.~Circuit();
+
 	// set second circuit to rendezvous
 	circuit_rendezvous.Initialize(onion_url, consensus);
 	circuit_rendezvous.SetCircuit(2, Circuit::CircuitType::Rendezvous);
@@ -33,6 +47,8 @@ int tor::Service::ConnectToService()
 
 	// finish introducing
 	circuit_rendezvous.FinishRendezvous(&onion_relay);
+
+	circuit_introducing.~Circuit();
 
 	return 0;
 }
@@ -246,11 +262,6 @@ int tor::Service::ParseIntroductionPoints(string descriptor)
 		buffer_point.port = atoi(port.c_str());
 		buffer_point.onion_key = onionKey;
 		buffer_point.service_key = serviceKey;
-
-		cout << "Onion key: " << endl;
-		cout << onionKey << endl;
-		cout << "Service key: " << endl;
-		cout << serviceKey << endl;
 
 		ByteQueue queue;
 		Base64Decoder decoder;

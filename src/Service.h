@@ -18,11 +18,13 @@ namespace tor {
 
 		vector<IntroductionPoint> introduction_points;
 
+		int circuit_inc = 1;
 		Circuit circuit_descriptor; // need to get descriptor with intro points
 		Circuit circuit_rendezvous; // main channel
 		Circuit circuit_introducing; // need to introduce our rendezvous circuit
 
 		Service(Consensus &consensus, string onion_url);
+		~Service();
 
 		int ConnectToService();
 		int MakeRequest(string query, string &answer);

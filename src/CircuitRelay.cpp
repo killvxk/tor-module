@@ -9,6 +9,12 @@ tor::CircuitRelay::CircuitRelay(Relay relay, unsigned int circuit_id) : Relay(re
 	
 }
 
+tor::CircuitRelay::~CircuitRelay()
+{
+	//if (onion_key_bytes)
+		//delete[] onion_key_bytes;
+}
+
 int tor::CircuitRelay::ConnectSsl()
 {
 	ssl_socket.Connect(relay_ip.ip_string, relay_orport);

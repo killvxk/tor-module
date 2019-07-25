@@ -45,6 +45,7 @@ namespace tor {
 
 		CircuitRelay();
 		CircuitRelay(Relay relay, unsigned int circuit_id);
+		~CircuitRelay();
 
 		int ConnectSsl();
 

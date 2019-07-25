@@ -79,6 +79,11 @@ tor::Relay::Relay(string full_string) : full_relay_string(full_string)
 	}
 }
 
+tor::Relay::~Relay()
+{
+	
+}
+
 int tor::Relay::ParseFlags(string flags_string)
 {
 	size_t found = 0;

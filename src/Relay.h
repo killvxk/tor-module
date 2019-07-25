@@ -26,6 +26,7 @@ namespace tor {
 		Relay();
 		Relay(string input_ip, string input_name, int input_orport, int input_dirport);
 		Relay(string full_string);
+		~Relay();
 
 		int ParseFlags(string flags_string);
 	};

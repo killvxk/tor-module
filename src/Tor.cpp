@@ -6,6 +6,13 @@ Tor::Tor() {
 	
 }
 
+tor::Tor::~Tor()
+{
+	for (int i = 0; i < connected_services.size(); i++) {
+		//connected_services[i].~Service();
+	}
+}
+
 void tor::Tor::Initialize()
 {
 	WSADATA WsaData;
