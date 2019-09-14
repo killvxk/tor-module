@@ -11,8 +11,10 @@ namespace tor {
 
 		string onion_url;
 		short onion_port = 80;
-		vector<ByteSeq> descriptors;
+		vector<vector<byte>> descriptors;
 		vector<Relay*> descriptor_relays;
+
+		static const int max_circuit_reset_attempts = 3;
 		
 		CircuitRelay onion_relay;
 

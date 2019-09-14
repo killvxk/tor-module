@@ -1,5 +1,9 @@
 #include "common.h"
 
+#ifdef _CRTDBG_MAP_ALLOC
+#define new new( _NORMAL_BLOCK, __FILE__, __LINE__)
+#endif
+
 /*
 Get data from ip, port, query by win socket
 0 - succes
@@ -25,9 +29,14 @@ int tor::GetSocketData(string socket_ip, u_short socket_port, string& data, stri
 		memcpy(&sin.sin_addr, hp->h_addr, 4);
 	}
 
-	if (connect(Socket, (struct sockaddr*) &sin, sizeof(sin)) == SOCKET_ERROR)
+	if (setsockopt(Socket, SOL_SOCKET, SO_RCVTIMEO, (char*)& recv_timeout, sizeof(recv_timeout)))
 	{
 		return 1;
+	}
+
+	if (connect(Socket, (struct sockaddr*) &sin, sizeof(sin)) == SOCKET_ERROR)
+	{
+		return 2;
 	}
 
 	if (!query.empty())
@@ -35,6 +44,10 @@ int tor::GetSocketData(string socket_ip, u_short socket_port, string& data, stri
 
 	while (true) {
 		recieved = ::recv(Socket, buffer, 100, 0);
+
+		if (recieved == SOCKET_ERROR) {
+			return 3;
+		}
 
 		if (recieved) {
 			data.append(buffer, recieved);
@@ -47,7 +60,7 @@ int tor::GetSocketData(string socket_ip, u_short socket_port, string& data, stri
 	}
 	
 	if (!data_length) {
-		return 2;
+		return 4;
 	}
 
 	closesocket(Socket);
@@ -75,6 +88,9 @@ int tor::Base64Decode(string data, byte* output_data)
 	return 0;
 }
 
+/*
+output_data should be allocated before call
+*/
 int tor::Base64Decode(string data, byte* &output_data, int& output_size)
 {
 	Base64Decoder decoder;
@@ -90,17 +106,21 @@ int tor::Base64Decode(string data, byte* &output_data, int& output_size)
 	}
 	else
 		return 1;
+
 	return 0;
 }
 
 int tor::Base64Decode(string data, string &output_data)
 {
-	byte* buffer = new byte[data.length()];
+	byte* buffer;
 	int size = 0;
 	Base64Decode(data, buffer, size);
 
 	output_data.resize(size + 1);
 	memcpy(&output_data[0], buffer, size);
+
+	delete[] buffer;
+
 	return 0;
 }
 

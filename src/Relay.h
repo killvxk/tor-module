@@ -13,7 +13,7 @@ namespace tor {
 		// relay info
 		string relay_name; // nickname
 		string relay_identity_base64; // identity's hash base64 (27)
-		byte* relay_identity = nullptr; // identity's hash (20)
+		vector<byte> relay_identity; // identity's hash (20)
 		string relay_fingerprint; // identity fingerprint (uses to get public key and extend circuit(hz)) (40)
 		string relay_digest; // hash of its most recent descriptor
 		string relay_publication_time; // the publication time of its most recent descriptor, in the form YYYY - MM - DD HH : MM:SS, in UTC.

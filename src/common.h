@@ -2,6 +2,13 @@
 #define _CRT_SECURE_NO_WARNINGS
 #undef UNICODE
 
+// memory leaks
+#ifdef _DEBUG
+#define _CRTDBG_MAP_ALLOC
+#include <stdlib.h>
+#include <crtdbg.h>
+#endif
+
 //some tor constants
 #define DH_LEN 128
 #define HASH_LEN 20
@@ -53,11 +60,9 @@ using namespace std;
 using namespace CryptoPP;
 
 namespace tor {
+	// some settings
+	const int recv_timeout = 4000;
 
-	struct ByteSeq {
-		byte* pointer;
-		int size;
-	};
 	struct IP {
 		byte octets[4];
 
@@ -78,7 +83,7 @@ namespace tor {
 		string service_key;
 		int relay_number;
 
-		ByteSeq dec_service_key;
+		vector<byte> dec_service_key;
 
 		RSA::PublicKey public_onion_key;
 		RSAES_OAEP_SHA_Encryptor encryptor_onion;

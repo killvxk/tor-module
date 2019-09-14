@@ -1,5 +1,9 @@
 #include "Relay.h"
 
+#ifdef _CRTDBG_MAP_ALLOC
+#define new new( _NORMAL_BLOCK, __FILE__, __LINE__)
+#endif
+
 tor::Relay::Relay()
 {
 }
@@ -35,10 +39,10 @@ tor::Relay::Relay(string full_string) : full_relay_string(full_string)
 			case 1: {
 				relay_identity_base64 = param_string;
 
-				relay_identity = new byte[20];
-				Base64Decode(relay_identity_base64, relay_identity);
+				relay_identity.resize(20);
+				Base64Decode(relay_identity_base64, relay_identity.data());
 
-				relay_fingerprint = HashToString(relay_identity);
+				relay_fingerprint = HashToString(relay_identity.data());
 				break;
 			}
 			case 2: {
@@ -81,7 +85,7 @@ tor::Relay::Relay(string full_string) : full_relay_string(full_string)
 
 tor::Relay::~Relay()
 {
-	
+
 }
 
 int tor::Relay::ParseFlags(string flags_string)

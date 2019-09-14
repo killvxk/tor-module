@@ -3,6 +3,10 @@
 #include "common.h"
 #include "Relay.h"
 
+#ifdef _CRTDBG_MAP_ALLOC
+#define new new( _NORMAL_BLOCK, __FILE__, __LINE__)
+#endif
+
 namespace tor {
 
 	class CircuitRelay : public Relay {
@@ -11,6 +15,9 @@ namespace tor {
 		unsigned long circuit_id = 0;
 
 		SSLSocket ssl_socket;
+
+		// name for debug
+		string name;
 
 		// crypto objects
 
@@ -28,8 +35,12 @@ namespace tor {
 		SecByteBlock secret_key_number;
 		DH dh_handle;
 		// AES
-		CTR_Mode<AES>::Encryption *encryptor_forward = new CTR_Mode<AES>::Encryption();
-		CTR_Mode<AES>::Decryption *encryptor_backward = new CTR_Mode<AES>::Decryption();
+		CTR_Mode<AES>::Encryption* encryptor_forward = new CTR_Mode<AES>::Encryption();
+		CTR_Mode<AES>::Decryption* encryptor_backward = new CTR_Mode<AES>::Decryption();
+
+		//CTR_Mode<AES>::Encryption encryptor_forward;
+		//CTR_Mode<AES>::Decryption encryptor_backward;
+
 		byte iv[16] = {0, 0, 0 , 0, 0, 0, 0 , 0, 0, 0, 0 , 0, 0, 0, 0 , 0 };
 		// SHA1
 		vector<byte> hash_backward_bytes;
@@ -44,6 +55,7 @@ namespace tor {
 		byte d_forward[HASH_LEN], d_backward[HASH_LEN], key_forward[KEY_LEN], key_backward[KEY_LEN];
 
 		CircuitRelay();
+		CircuitRelay(string name);
 		CircuitRelay(Relay relay, unsigned int circuit_id);
 		~CircuitRelay();
 

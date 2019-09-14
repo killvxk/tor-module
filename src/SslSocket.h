@@ -7,9 +7,9 @@ class SSLSocket {
 public:
 
 	void SSLSocketDelete();
-	void Connect(string ipI, int portI);
+	int Connect(string ipI, int portI);
 	int SendData(BYTE* message, int size);
-	int GetData(BYTE* &message, int& size);
+	int GetData(BYTE*& message, int& size);
 
 	struct sockaddr_in sin;
 	struct hostent* hp;
@@ -57,4 +57,6 @@ private:
 	string ip;
 	int port;
 	bool isDebug = true;
+
+	static const DWORD recv_timeout = 4000;
 };

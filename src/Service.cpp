@@ -1,7 +1,13 @@
 #include "Service.h"
+
+#ifdef _CRTDBG_MAP_ALLOC
+#define new new( _NORMAL_BLOCK, __FILE__, __LINE__)
+#endif
+
 tor::Service::Service(Consensus& consensus, string onion_url) : 
 	consensus(consensus), 
 	onion_url(onion_url), 
+	onion_relay("onion_relay"),
 	circuit_descriptor(onion_url, consensus, circuit_inc++),
 	circuit_rendezvous(onion_url, consensus, circuit_inc++),
 	circuit_introducing(onion_url, consensus, circuit_inc++)
@@ -11,42 +17,88 @@ tor::Service::Service(Consensus& consensus, string onion_url) :
 
 tor::Service::~Service()
 {
-	/*
-	if (circuit_descriptor.circuit_relays.size())
-		circuit_descriptor.~Circuit();
-	if (circuit_rendezvous.circuit_relays.size())
-		circuit_rendezvous.~Circuit();
-	if (circuit_introducing.circuit_relays.size())
-		circuit_introducing.~Circuit();
-		*/
+	//circuit_rendezvous.~Circuit();
+
 }
 
 int tor::Service::ConnectToService()
 {
-	int return_code = 0;
-	return_code = GetResponsibleDirectories();
-	if (return_code) {
+	if (GetResponsibleDirectories()) {
 		return 1;
 	}
 
 	// set first circuit to get descriptor
 	circuit_descriptor.Initialize(onion_url, consensus, descriptors, descriptor_relays);
-	circuit_descriptor.SetCircuit(2, Circuit::CircuitType::DescriptorFetch);
+
+	// tries max 3 times, then if unsuccess - return an error
+	int attempts = 0;
+	while (true) {
+		attempts++;
+
+		int code = circuit_descriptor.SetCircuit(2, Circuit::CircuitType::DescriptorFetch);
+		if (code) {
+			if (attempts >= max_circuit_reset_attempts)
+				return 1;
+			else {
+				circuit_descriptor.ClearCircuit();
+				continue;
+			}
+		}
+		else
+			break;
+	}
 
 	ParseIntroductionPoints(circuit_descriptor.introduction_points_string);
-
 	circuit_descriptor.~Circuit();
+
 
 	// set second circuit to rendezvous
 	circuit_rendezvous.Initialize(onion_url, consensus);
-	circuit_rendezvous.SetCircuit(2, Circuit::CircuitType::Rendezvous);
+
+	// tries max 3 times, then if unsuccess - return an error
+	attempts = 0;
+	while (true) {
+		attempts++;
+
+		int code = circuit_rendezvous.SetCircuit(2, Circuit::CircuitType::Rendezvous);
+		if (code) {
+			if (attempts >= max_circuit_reset_attempts)
+				return 2;
+			else {
+				circuit_rendezvous.ClearCircuit();
+				continue;
+			}
+		}
+		else
+			break;
+	}
 
 	// set third circuit to introduce our rendezvous circuit
 	circuit_introducing.Initialize(onion_url, consensus, &introduction_points[1], &circuit_rendezvous.circuit_relays.back(), &onion_relay, circuit_rendezvous.rendezvous_cookie);
-	circuit_introducing.SetCircuit(2, Circuit::CircuitType::Introducing);
+
+	// tries max 3 times, then if unsuccess - return an error
+	attempts = 0;
+	while (true) {
+		attempts++;
+
+		int code = circuit_introducing.SetCircuit(2, Circuit::CircuitType::Introducing);
+		if (code) {
+			if (attempts >= max_circuit_reset_attempts)
+				return 3;
+			else {
+				circuit_introducing.ClearCircuit();
+				continue;
+			}
+		}
+		else
+			break;
+	}
 
 	// finish introducing
-	circuit_rendezvous.FinishRendezvous(&onion_relay);
+	int code = circuit_rendezvous.FinishRendezvous(&onion_relay);
+	if (code) {
+		return 4;
+	}
 
 	circuit_introducing.~Circuit();
 
@@ -55,9 +107,15 @@ int tor::Service::ConnectToService()
 
 int tor::Service::MakeRequest(string query, string& answer)
 {
-	circuit_rendezvous.CreateRelayStream(onion_port);
+	int code = circuit_rendezvous.CreateRelayStream(onion_port);
+	if (code) {
+		return 1;
+	}
 
-	circuit_rendezvous.MakeStreamRequest(query, answer);
+	code = circuit_rendezvous.MakeStreamRequest(query, answer);
+	if (code) {
+		return 2;
+	}
 
 	return 0;
 }
@@ -85,32 +143,8 @@ int tor::Service::GetResponsibleDirectories()
 		first_sha_bytes[3] = temp.bytes[0];
 		first_sha_bytes[4] = (byte)replica;
 
-#ifdef CIRCUIT_DEBUG_INFO
-		for (int i = 0; i < 5; i++) {
-			cout << (int)first_sha_bytes[i] << " ";
-		}
-		cout << endl;
-#endif
-
 		byte first_hash[CryptoPP::SHA1::DIGESTSIZE];
 		GetSHA1(first_sha_bytes, 5, first_hash);
-
-#ifdef CIRCUIT_DEBUG_INFO
-		HexEncoder hexEncoder;
-		hexEncoder.Put(first_hash, CryptoPP::SHA1::DIGESTSIZE);
-		hexEncoder.MessageEnd();
-
-		word64 sizeHex = hexEncoder.MaxRetrievable();
-		byte* firstHex = new byte[sizeHex];
-		hexEncoder.Get(firstHex, sizeHex);
-
-		cout << "First sha1: " << sizeHex << " " << permanent_id_size << endl;
-		for (int i = 0; i < sizeHex; i++) {
-			cout << firstHex[i];
-		}
-		cout << endl;
-		delete firstHex;
-#endif
 
 		byte* second_sha_bytes = new byte[permanent_id_size + CryptoPP::SHA1::DIGESTSIZE];
 
@@ -122,31 +156,13 @@ int tor::Service::GetResponsibleDirectories()
 
 		delete[] second_sha_bytes;
 
-#ifdef CIRCUIT_DEBUG_INFO
-		HexEncoder hexEncoder2;
-		hexEncoder2.Put(second_hash, CryptoPP::SHA1::DIGESTSIZE);
-		hexEncoder2.MessageEnd();
-
-		sizeHex = hexEncoder2.MaxRetrievable();
-		byte* secondHex = new byte[sizeHex];
-		hexEncoder2.Get(secondHex, sizeHex);
-
-		cout << "Second sha1: " << sizeHex << endl;
-		for (int i = 0; i < sizeHex; i++) {
-			cout << secondHex[i];
-		}
-		cout << endl;
-		delete secondHex;
-#endif
-
 		byte* descriptor;
 		unsigned long descriptor_size;
 		Base32Encode(second_hash, CryptoPP::SHA1::DIGESTSIZE, descriptor, descriptor_size);
 
-		ByteSeq descriptor_struct;
-		descriptor_struct.size = descriptor_size;
-		descriptor_struct.pointer = new byte[descriptor_size];
-		memcpy(descriptor_struct.pointer, descriptor, descriptor_size);
+		vector<byte> descriptor_struct;
+		descriptor_struct.resize(descriptor_size);
+		memcpy(descriptor_struct.data(), descriptor, descriptor_size);
 
 		descriptors.push_back(descriptor_struct);
 
@@ -155,7 +171,7 @@ int tor::Service::GetResponsibleDirectories()
 		int counter = 0, found_count = 0;
 
 		while (true) {
-			if (consensus.relays[counter].relay_flags.HSDir && memcmp(consensus.relays[counter].relay_identity, second_hash, 20) > 0) {
+			if (consensus.relays[counter].relay_flags.HSDir && memcmp(consensus.relays[counter].relay_identity.data(), second_hash, 20) > 0) {
 				found_count++;
 				descriptor_relays.push_back(&consensus.relays[counter]);
 			}
@@ -295,9 +311,8 @@ int tor::Service::ParseIntroductionPoints(string descriptor)
 		word64 size = decoder3.MaxRetrievable();
 		if (size && size <= SIZE_MAX)
 		{
-			buffer_point.dec_service_key.pointer = new byte[size];
-			decoder3.Get(buffer_point.dec_service_key.pointer, size);
-			buffer_point.dec_service_key.size = size;
+			buffer_point.dec_service_key.resize(size);
+			decoder3.Get(buffer_point.dec_service_key.data(), size);
 		}
 
 		introduction_points.push_back(buffer_point);

@@ -1,7 +1,7 @@
 #include "SslSocket.h"
 
 
-void SSLSocket::Connect(string ipI, int portI)
+int SSLSocket::Connect(string ipI, int portI)
 {
 	ip = ipI;
 	port = portI;
@@ -11,9 +11,15 @@ void SSLSocket::Connect(string ipI, int portI)
 		ofs.close();
 	}
 
-	Initialize();
-
-	cout << "SSL connected" << endl;
+	int code = Initialize();
+	if (code) {
+		cout << "Error " << code << endl;
+		return 1;
+	}
+	else {
+		cout << "SSL connected" << endl;
+		return 0;
+	}
 }
 
 void SSLSocket::SSLSocketDelete()
@@ -49,7 +55,7 @@ void SSLSocket::SSLSocketDelete()
 
 	if (Socket != INVALID_SOCKET) closesocket(Socket);
 
-	WSACleanup();
+	//WSACleanup();
 
 	if (hMyCertStore) CertCloseStore(hMyCertStore, 0);
 
@@ -111,7 +117,7 @@ int SSLSocket::SendData(BYTE * message, int size)
 	return 0;
 }
 
-int SSLSocket::GetData(BYTE* &message, int& size)
+int SSLSocket::GetData(BYTE * &message, int& size)
 {
 	PBYTE pbIoBuffer;
 	DWORD cbIoBufferLength;
@@ -137,7 +143,7 @@ int SSLSocket::GetData(BYTE* &message, int& size)
 	cbIoBuffer = 0;
 	scRet = 0;
 
-	read_more_data:
+read_more_data:
 	if (cbIoBuffer == 0 || scRet == SEC_E_INCOMPLETE_MESSAGE)
 	{
 		cbData = recv(Socket, (char*)pbIoBuffer + cbIoBuffer, cbIoBufferLength - cbIoBuffer, 0);
@@ -206,14 +212,9 @@ int SSLSocket::GetData(BYTE* &message, int& size)
 		size = length;
 		if (length)
 		{
-			//buff = (PBYTE)pDataBuffer->pvBuffer;
 			message = new byte[size];
 			memcpy(message, pDataBuffer->pvBuffer, size);
 			DebugLog("Decrypted data: " + to_string(length) + " bytes");
-
-			ofstream ofs("cells.txt", ios_base::app);
-			ofs.write((char*)message, size);
-			ofs.close();
 		}
 	}
 
@@ -413,13 +414,17 @@ int SSLSocket::ConnectToServer(char* pszServerName, int iPortNumber)
 	else
 		memcpy(&sin.sin_addr, hp->h_addr, 4);
 
+	if (setsockopt(Socket, SOL_SOCKET, SO_RCVTIMEO, (char*)& recv_timeout, sizeof(recv_timeout)))
+	{
+		DebugLog("Error in setsockopt: " + to_string(WSAGetLastError()));
+		return WSAGetLastError();
+	}
 
 	if (connect(Socket, (struct sockaddr*) & sin, sizeof(sin)) == SOCKET_ERROR)
 	{
-		DebugLog("Error connecting to server | WSAGetLastError:" + to_string(WSAGetLastError()));
-		DebugLog(string(pszServerName) + " " + to_string(iPortNumber));
-		closesocket(Socket);
-		return WSAGetLastError();
+		int return_code = WSAGetLastError();
+		DebugLog("Error connecting to server | WSAGetLastError:" + to_string(return_code));
+		return return_code;
 	}
 
 	return SEC_E_OK;

@@ -1,23 +1,46 @@
 #include "CircuitRelay.h"
 
+#ifdef _CRTDBG_MAP_ALLOC
+#define new new( _NORMAL_BLOCK, __FILE__, __LINE__)
+#endif
+
 tor::CircuitRelay::CircuitRelay()
 {
+	cout << "Called first constructor in relay: " << relay_name << " debug name: " << name << endl;
+}
+
+tor::CircuitRelay::CircuitRelay(string name) : name(name)
+{
+
 }
 
 tor::CircuitRelay::CircuitRelay(Relay relay, unsigned int circuit_id) : Relay(relay.full_relay_string), circuit_id(circuit_id)
 {
-	
+	cout << "Called second constructor in relay: " << relay_name << " debug name: " << name << endl;
 }
 
 tor::CircuitRelay::~CircuitRelay()
 {
-	//if (onion_key_bytes)
-		//delete[] onion_key_bytes;
+	cout << "Called destructor in relay: " << relay_name << " debug name: " << name << endl;
+
+	if (onion_key_bytes != nullptr && onion_key_bytes_size) {
+		onion_key_bytes_size = 0;
+		delete[] onion_key_bytes;
+	}
+
+	if (is_crypto_initialized) {
+		is_crypto_initialized = false;
+
+		delete encryptor_forward;
+		delete encryptor_backward;
+	}
 }
 
 int tor::CircuitRelay::ConnectSsl()
 {
-	ssl_socket.Connect(relay_ip.ip_string, relay_orport);
+	if (ssl_socket.Connect(relay_ip.ip_string, relay_orport)) {
+		return 1;
+	}
 
 	return 0;
 }
@@ -58,11 +81,20 @@ int tor::CircuitRelay::HybridEncryption(byte* output_data, int& output_size, byt
 
 int tor::CircuitRelay::FinishTapHandshake(byte* key_part, short key_part_size)
 {
+	if (key_part_size != 148) {
+		return 2;
+	}
+
 	byte* key_material = new byte[SHA1::DIGESTSIZE * 5];
 
 	memcpy(public_b_number.BytePtr(), key_part, DH_LEN); // copy public b number
 
-	dh_handle.Agree(secret_key_number, private_a_number, public_b_number); // compute secret key
+	try {
+		dh_handle.Agree(secret_key_number, private_a_number, public_b_number); // compute secret key
+	}
+	catch (...){
+		return 3;
+	}
 
 	byte* secret_key_bytes = new byte[secret_key_number.SizeInBytes() + 1];
 	memcpy(secret_key_bytes, secret_key_number.BytePtr(), secret_key_number.SizeInBytes()); // copy secret number to buffer
@@ -92,6 +124,9 @@ int tor::CircuitRelay::FinishTapHandshake(byte* key_part, short key_part_size)
 	memcpy(key_backward, key_material + HASH_LEN * 3 + KEY_LEN, KEY_LEN);
 
 	// initialize ecryptors and hashers
+	//encryptor_forward = CTR_Mode<AES>::Encryption(key_forward, AES::DEFAULT_KEYLENGTH, iv);
+	//encryptor_backward = CTR_Mode<AES>::Decryption(key_backward, AES::DEFAULT_KEYLENGTH, iv);
+
 	encryptor_forward->SetKeyWithIV(key_forward, AES::DEFAULT_KEYLENGTH, iv);
 	encryptor_backward->SetKeyWithIV(key_backward, AES::DEFAULT_KEYLENGTH, iv);
 

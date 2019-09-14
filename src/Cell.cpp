@@ -1,5 +1,9 @@
 #include "Cell.h"
 
+#ifdef _CRTDBG_MAP_ALLOC
+#define new new( _NORMAL_BLOCK, __FILE__, __LINE__)
+#endif
+
 tor::Cell::Cell(CellType cell_type, CellMode cell_mode, unsigned long circuit_id, short stream_id) :
 	cell_type(cell_type), cell_mode(cell_mode), circuit_id(circuit_id), stream_id(stream_id)
 {
@@ -34,8 +38,10 @@ tor::Cell::Cell(CellType cell_type, PayloadCellType cell_payload_type, CellMode 
 
 tor::Cell::~Cell()
 {
+	if (cell_bytes != nullptr && cell_size)
+		delete[] cell_bytes;
+
 	cell_size = 0;
-	delete[] cell_bytes;
 }
 
 int tor::Cell::FillCircuitId()
@@ -188,6 +194,8 @@ int tor::Cell::FillExtend2(byte* onion_skin, short onion_skin_size, tor::IP rela
 
 	FillRelayPayload(payload, payload_size);
 
+	delete[] payload;
+
 	return 0;
 }
 
@@ -209,6 +217,8 @@ int tor::Cell::FillExtend(byte* onion_skin, short onion_skin_size, tor::IP relay
 
 	FillRelayPayload(payload, payload_size);
 
+	delete[] payload;
+
 	return 0;
 }
 
@@ -223,13 +233,13 @@ int tor::Cell::FillHttpGet(string service_address, string query)
 	return 0;
 }
 
-int tor::Cell::FillFetchDescriptor(ByteSeq descriptor_id, string host_ip)
+int tor::Cell::FillFetchDescriptor(vector<byte> descriptor_id, string host_ip)
 {
 	FillCircuitId();
 
 	string payload = "GET /tor/rendezvous2/";
-	for (int i = 0; i < descriptor_id.size; i++)
-		payload += descriptor_id.pointer[i];
+	for (int i = 0; i < descriptor_id.size(); i++)
+		payload += descriptor_id[i];
 	payload += " HTTP/1.0\r\nHost: " + host_ip + "\r\n\r\n";
 
 	FillRelayPayload((byte*)payload.c_str(), payload.length());
@@ -247,6 +257,8 @@ int tor::Cell::FillRendezvous(byte* rendezvous_cookie)
 	memcpy(&payload[0], rendezvous_cookie, payload_size); // rendezvous cookie
 
 	FillRelayPayload(payload, payload_size);
+
+	delete[] payload;
 
 	return 0;
 }

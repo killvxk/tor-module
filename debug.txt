@@ -2,7 +2,7 @@ Secur32.dll was loaded
 Credentials Initialized
 Connected To Server
 155 bytes of handshake data sent
-1013 bytes of handshake data received
+1020 bytes of handshake data received
 182 bytes of handshake data sent
 107 bytes of handshake data received
 Handshake was successful
@@ -12,8 +12,8 @@ Server certificate context released
 Sending 9 bytes of plaintext
 85 bytes of encrypted data sent
 Start to Get Data 16384
-2117 bytes of encrypted application data received
-Decrypted data: 2047 bytes
+2133 bytes of encrypted application data received
+Decrypted data: 2051 bytes
 Sending 514 bytes of plaintext
 597 bytes of encrypted data sent
 Sending 514 bytes of plaintext
@@ -31,3 +31,30 @@ Sending 514 bytes of plaintext
 Start to Get Data 16384
 597 bytes of encrypted application data received
 Decrypted data: 514 bytes
+Start to Get Data 16384
+597 bytes of encrypted application data received
+Decrypted data: 514 bytes
+Sending 514 bytes of plaintext
+597 bytes of encrypted data sent
+Sending Close Notify
+85 bytes of handshake data sent
+Disconnected From Server
+Begin Cleanup
+All Done
+Sending 514 bytes of plaintext
+597 bytes of encrypted data sent
+Start to Get Data 16384
+597 bytes of encrypted application data received
+Decrypted data: 514 bytes
+Sending 514 bytes of plaintext
+597 bytes of encrypted data sent
+Start to Get Data 16384
+1621 bytes of encrypted application data received
+Decrypted data: 1542 bytes
+Sending 514 bytes of plaintext
+4294967295 bytes of encrypted data sent
+Error sending close notify | Status:10093
+Error disconnecting from server
+Disconnected From Server
+Begin Cleanup
+All Done

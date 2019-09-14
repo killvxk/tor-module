@@ -1,19 +1,38 @@
 #include "common.h"
 #include "Circuit.h"
 
+#ifdef _CRTDBG_MAP_ALLOC
+#define new new( _NORMAL_BLOCK, __FILE__, __LINE__)
+#endif
+
 tor::Circuit::Circuit(string onion_url, Consensus& consensus, int circuit_id) : onion_url(onion_url), consensus(consensus)
 {
 	Circuit::circuit_id = circuit_id;
 	Circuit::circuit_id |= 0x80000000; // MSB
+
+	circuit_relays.reserve(10);
 }
 
 tor::Circuit::~Circuit()
 {
 	DestroyCircuit();
+
+	if (circuit_relays.size())
+		circuit_relays[0].ssl_socket.SSLSocketDelete();
+
+	if (circuit_type == Circuit::CircuitType::Rendezvous) { // this is for onion_relay
+		circuit_relays.back().is_crypto_initialized = false;
+		//circuit_relays.pop_back();
+	}
+
+	introduction_point = nullptr;
+	introduction_point_relay = nullptr;
+	rendzvous_relay = nullptr;
+	onion_relay = nullptr;
 }
 
 // TODO: remake constructors
-int tor::Circuit::Initialize(string onion_url, Consensus& consensus, vector<ByteSeq> descriptors, vector<Relay*> descriptor_relays)
+int tor::Circuit::Initialize(string onion_url, Consensus& consensus, vector<vector<byte>> descriptors, vector<Relay*> descriptor_relays)
 {
 	Circuit::onion_url = onion_url;
 	Circuit::consensus = consensus;
@@ -45,33 +64,57 @@ int tor::Circuit::Initialize(string onion_url, Consensus& consensus, Introductio
 
 int tor::Circuit::SetCircuit(int hops_number, CircuitType circuit_type)
 {
+	Circuit::circuit_type = circuit_type;
+
 	switch (circuit_type) {
 	case CircuitType::DescriptorFetch: {
-		EstablishConnection(hops_number, *descriptor_relays[0]);
+		int code = EstablishConnection(hops_number, *descriptor_relays[0]);
+		if (code) {
+			return 10;
+		}
 
-		CreateDirStream();
-		FetchDescriptor(descriptors[0], circuit_relays.back().relay_ip.ip_string, introduction_points_string);
+		code = CreateDirStream();
+		if (code) {
+			return 11;
+		}
+
+		code = FetchDescriptor(descriptors[0], circuit_relays.back().relay_ip.ip_string, introduction_points_string);
+		if (code) {
+			return 12;
+		}
 
 		break;
 	}
 	case CircuitType::Rendezvous: {
-		EstablishConnection(hops_number);
+		int code = EstablishConnection(hops_number);
+		if (code) {
+			return 20;
+		}
 
 		rendezvous_cookie = new byte[20];
 		for (int i = 0; i < 20; i++) {
 			rendezvous_cookie[i] = rand() % 100;
 		}
 
-		EstablishRendezvous(rendezvous_cookie);
+		code = EstablishRendezvous(rendezvous_cookie);
+		if (code) {
+			return 21;
+		}
 
 		break;
 	}
 	case CircuitType::Introducing: {
 		introduction_point_relay = &consensus.relays[introduction_point->relay_number];
 
-		EstablishConnection(hops_number, *introduction_point_relay);
+		int code = EstablishConnection(hops_number, *introduction_point_relay);
+		if (code) {
+			return 30;
+		}
 
-		MakeIntroduce();
+		code = MakeIntroduce();
+		if (code) {
+			return 31;
+		}
 
 		break;
 	}
@@ -82,34 +125,39 @@ int tor::Circuit::SetCircuit(int hops_number, CircuitType circuit_type)
 
 int tor::Circuit::EstablishConnection(int hops_number)
 {
+	int max_connect_try = 5;
 	for (int i = 0; i < hops_number; i++) {
+		RelayFlags flags;
 		if (i == 0) {
-			RelayFlags flags;
 			flags.Fast = true;
 			flags.Running = true;
 			flags.Valid = true;
 			flags.Guard = true;
-
-			AddRelayToCircuit(GetRandomRelayWithFlags(flags));
 		}
 		else {
 			if (i == hops_number - 1) {
-				RelayFlags flags;
 				flags.Fast = true;
 				flags.Running = true;
 				flags.Valid = true;
 				flags.Exit = true;
-
-				AddRelayToCircuit(GetRandomRelayWithFlags(flags));
 			}
 			else {
-				RelayFlags flags;
 				flags.Fast = true;
 				flags.Running = true;
 				flags.Valid = true;
-
-				AddRelayToCircuit(GetRandomRelayWithFlags(flags));
 			}
+		}
+
+		int code_return = AddRelayToCircuit(GetRandomRelayWithFlags(flags));
+		if (code_return) {
+			circuit_relays.pop_back(); // delete CircuitRelay at the end
+			i--; // decrease connected number, because we didn't connect
+			max_connect_try--;
+			
+			if (max_connect_try <= 0)
+				return 1;
+
+			continue; // continue and find another relay
 		}
 	}
 
@@ -118,27 +166,32 @@ int tor::Circuit::EstablishConnection(int hops_number)
 
 int tor::Circuit::EstablishConnection(int hops_number, Relay& end_relay)
 {
-	EstablishConnection(hops_number - 1);
-	AddRelayToCircuit(end_relay);
+	if (EstablishConnection(hops_number - 1)) {
+		return 1;
+	}
+	if (AddRelayToCircuit(end_relay)) {
+		return 2;
+	}
 
 	return 0;
 }
 
 int tor::Circuit::AddRelayToCircuit(Relay& relay)
 {
-	CircuitRelay circuit_relay(relay, circuit_id);
+	circuit_relays.emplace_back(relay, circuit_id);
+	consensus.FillPublicKey(circuit_relays.back());
 
-	if (circuit_relays.size() == 0) { // that means it's enter relay
-		consensus.FillPublicKey(circuit_relay);
-		circuit_relays.push_back(circuit_relay);
-		ConnectToRelay(circuit_relays[0]);
+	if (circuit_relays.size() == 1) { // that means it's enter relay
+		if (ConnectToRelay(circuit_relays[0])) {
+			return 1;
+		}
 
 		cout << "Connected to relay: " << circuit_relays[0].relay_name << endl;
 	}
 	else {
-		consensus.FillPublicKey(circuit_relay);
-		circuit_relays.push_back(circuit_relay);
-		ExtendToRelay(circuit_relays.back());
+		if (ExtendToRelay(circuit_relays.back())) {
+			return 2;
+		}
 
 		cout << "Extended to relay: " << circuit_relays.back().relay_name << endl;
 	}
@@ -154,10 +207,15 @@ int tor::Circuit::CreateRelayStream(short service_port)
 	cell_begin_stream.ComputeDigest(circuit_relays.back().hash_forward_bytes);
 	FullEncryptCell(cell_begin_stream.cell_bytes, cell_begin_stream.cell_size);
 
-	circuit_relays[0].ssl_socket.SendData(cell_begin_stream.cell_bytes, cell_begin_stream.cell_size);
+	if (SendCell(cell_begin_stream)) {
+		return 1;
+	}
 
 	Cell cell_connected(Cell::CellType::RELAY, Cell::PayloadCellType::RELAY_CONNECTED, Cell::CellMode::GET, circuit_id, stream_id);
-	circuit_relays[0].ssl_socket.GetData(cell_connected.cell_bytes, cell_connected.cell_size);
+
+	if (RecvCell(cell_connected)) {
+		return 2;
+	}
 
 	FullDecryptCell(cell_connected.cell_bytes, cell_connected.cell_size);
 
@@ -166,6 +224,8 @@ int tor::Circuit::CreateRelayStream(short service_port)
 	}
 	else {
 		cout << "Stream creation error." << endl;
+
+		return 3;
 	}
 
 	onion_port = service_port;
@@ -183,11 +243,14 @@ int tor::Circuit::MakeStreamRequest(string data, string& output)
 	cell_data.ComputeDigest(circuit_relays.back().hash_forward_bytes);
 	FullEncryptCell(cell_data.cell_bytes, cell_data.cell_size);
 
-	circuit_relays[0].ssl_socket.SendData(cell_data.cell_bytes, cell_data.cell_size);
-
+	if (SendCell(cell_data)) {
+		return 1;
+	}
 
 	Cell cell_data_answer(Cell::CellType::RELAY, Cell::PayloadCellType::RELAY_DATA, Cell::CellMode::GET, circuit_id, stream_id);
-	GetFullStreamData(cell_data_answer.cell_bytes, cell_data_answer.cell_size);
+	if (GetFullStreamData(cell_data_answer.cell_bytes, cell_data_answer.cell_size)) {
+		return 2;
+	}
 
 	for (int b = 0; b < cell_data_answer.cell_size / 514; b++) {
 		for (int i = 16; i < 514; i++) {
@@ -202,11 +265,14 @@ int tor::Circuit::DestroyCircuit()
 {
 	if (circuit_relays.size() == 0)
 		return 1;
+
 	Cell cell_destroy(Cell::CellType::DESTROY, Cell::CellMode::SEND, circuit_id, 0);
 	cell_destroy.FillCircuitId();
 
 	cell_destroy.ComputeDigest(circuit_relays.back().hash_forward_bytes);
-	circuit_relays[0].ssl_socket.SendData(cell_destroy.cell_bytes, cell_destroy.cell_size);
+	if (SendCell(cell_destroy)) {
+		return 2;
+	}
 
 	return 0;
 }
@@ -220,10 +286,14 @@ int tor::Circuit::CreateDirStream()
 	cell_begin_dir.ComputeDigest(circuit_relays.back().hash_forward_bytes);
 	FullEncryptCell(cell_begin_dir.cell_bytes, cell_begin_dir.cell_size);
 
-	circuit_relays[0].ssl_socket.SendData(cell_begin_dir.cell_bytes, cell_begin_dir.cell_size);
+	if (SendCell(cell_begin_dir)) {
+		return 1;
+	}
 
 	Cell cell_connected(Cell::CellType::RELAY, Cell::PayloadCellType::RELAY_CONNECTED, Cell::CellMode::GET, circuit_id, stream_id);
-	circuit_relays[0].ssl_socket.GetData(cell_connected.cell_bytes, cell_connected.cell_size);
+	if (RecvCell(cell_connected)) {
+		return 2;
+	}
 
 	FullDecryptCell(cell_connected.cell_bytes, cell_connected.cell_size);
 
@@ -233,23 +303,20 @@ int tor::Circuit::CreateDirStream()
 int tor::Circuit::GetFullStreamData(byte* &data, int& data_size)
 {
 	data_size = 0;
-	byte* buffer = new byte[8000];
+	byte* buffer;
 	int recieved = 0;
 	bool is_end = false;
 
 	while (true) {
-		circuit_relays[0].ssl_socket.GetData(buffer, recieved);
+		int code = circuit_relays[0].ssl_socket.GetData(buffer, recieved);
+		if (code) {
+			delete[] buffer;
+
+			return 1;
+		}
 
 		for (int b = 0; b < recieved / 514; b++) {
 			FullDecryptCell(buffer + b * 514, 514);
-
-			/*
-			cout << "Cell#" << b << endl;
-			for (int i = 0; i < 514; i++) {
-				cout << std::hex << (int)buffer[b * 514 + i] << " ";
-			}
-			cout << endl;
-			*/
 
 			if (buffer[b * 514 + 16] == 6) // end of stream
 				is_end = true;
@@ -268,17 +335,22 @@ int tor::Circuit::GetFullStreamData(byte* &data, int& data_size)
 	return 0;
 }
 
-int tor::Circuit::FetchDescriptor(ByteSeq descriptor_id, string host_ip, string& descriptor)
+int tor::Circuit::FetchDescriptor(vector<byte> descriptor_id, string host_ip, string& descriptor)
 {
 	Cell cell_fetch_descriptor(Cell::CellType::RELAY, Cell::PayloadCellType::RELAY_DATA, Cell::CellMode::SEND, circuit_id, stream_id);
 	cell_fetch_descriptor.FillFetchDescriptor(descriptor_id, host_ip);
 	cell_fetch_descriptor.ComputeDigest(circuit_relays.back().hash_forward_bytes);
 
 	FullEncryptCell(cell_fetch_descriptor.cell_bytes, cell_fetch_descriptor.cell_size);
-	circuit_relays[0].ssl_socket.SendData(cell_fetch_descriptor.cell_bytes, cell_fetch_descriptor.cell_size);
+	if (SendCell(cell_fetch_descriptor)) {
+		return 1;
+	}
 
 	Cell cell_descriptor(Cell::CellType::RELAY, Cell::PayloadCellType::RELAY_DATA, Cell::CellMode::GET, circuit_id, stream_id);
-	GetFullStreamData(cell_descriptor.cell_bytes, cell_descriptor.cell_size);
+	if (GetFullStreamData(cell_descriptor.cell_bytes, cell_descriptor.cell_size)) {
+		return 2;
+	}
+
 
 	/*
 	for (int b = 0; b < cellR2.cellSize / 514; b++) {
@@ -302,6 +374,8 @@ int tor::Circuit::FetchDescriptor(ByteSeq descriptor_id, string host_ip, string&
 		}
 	}
 
+	//free(cell_descriptor.cell_bytes);
+
 	return 0;
 }
 
@@ -312,11 +386,15 @@ int tor::Circuit::EstablishRendezvous(byte* cookie)
 	cell_establish_rendezvous.ComputeDigest(circuit_relays.back().hash_forward_bytes);
 
 	FullEncryptCell(cell_establish_rendezvous.cell_bytes, cell_establish_rendezvous.cell_size);
-	circuit_relays[0].ssl_socket.SendData(cell_establish_rendezvous.cell_bytes, cell_establish_rendezvous.cell_size);
+	if (SendCell(cell_establish_rendezvous)) {
+		return 1;
+	}
 
 
 	Cell cell_rendezvous_established(Cell::CellType::RELAY, Cell::PayloadCellType::RELAY_COMMAND_RENDEZVOUS_ESTABLISHED, Cell::CellMode::GET, circuit_id, stream_id);
-	circuit_relays[0].ssl_socket.GetData(cell_rendezvous_established.cell_bytes, cell_rendezvous_established.cell_size);
+	if (RecvCell(cell_rendezvous_established)) {
+		return 2;
+	}
 
 	FullDecryptCell(cell_rendezvous_established.cell_bytes, cell_rendezvous_established.cell_size);
 
@@ -325,6 +403,8 @@ int tor::Circuit::EstablishRendezvous(byte* cookie)
 	}
 	else {
 		cout << "Rendezvous error step 1" << endl;
+
+		return 3;
 	}
 
 	return 0;
@@ -336,7 +416,7 @@ int tor::Circuit::MakeIntroduce()
 
 	// non-encrypted part
 	byte* service_key_hash = new byte[20];
-	GetSHA1(introduction_point->dec_service_key.pointer, introduction_point->dec_service_key.size, service_key_hash);
+	GetSHA1(introduction_point->dec_service_key.data(), introduction_point->dec_service_key.size(), service_key_hash);
 
 	// encrypted part
 	int encrypted_part_size = 1 + 4 + 2 + 20 + 2 + rendzvous_relay->onion_key_bytes_size + 20 + 128;
@@ -350,7 +430,7 @@ int tor::Circuit::MakeIntroduce()
 	encrypted_part[4] = rendzvous_relay->relay_ip.octets[3];
 	encrypted_part[5] = HIGH(rendzvous_relay->relay_orport); // rendezvous or port
 	encrypted_part[6] = LOW(rendzvous_relay->relay_orport);
-	memcpy(&encrypted_part[7], rendzvous_relay->relay_identity, 20); // ident
+	memcpy(&encrypted_part[7], rendzvous_relay->relay_identity.data(), 20); // ident
 	encrypted_part[27] = HIGH(rendezvous_onion_key_size); // rendezvous onion key size
 	encrypted_part[28] = LOW(rendezvous_onion_key_size);
 	memcpy(&encrypted_part[29], rendzvous_relay->onion_key_bytes, rendezvous_onion_key_size); // rendezvous onion key
@@ -378,11 +458,21 @@ int tor::Circuit::MakeIntroduce()
 	cell_introduce.ComputeDigest(circuit_relays.back().hash_forward_bytes);
 	FullEncryptCell(cell_introduce.cell_bytes, cell_introduce.cell_size);
 
-	circuit_relays[0].ssl_socket.SendData(cell_introduce.cell_bytes, cell_introduce.cell_size);
+	// clean up before errors
+	delete[] service_key_hash;
+	delete[] encrypted_part;
+	delete[] buffer;
+	delete[] payload;
+
+	if (SendCell(cell_introduce)) {
+		return 1;
+	}
 
 
 	Cell cell_introduce_ack(Cell::CellType::RELAY, Cell::PayloadCellType::RELAY_COMMAND_INTRODUCE_ACK, Cell::CellMode::GET, circuit_id, stream_id);
-	circuit_relays[0].ssl_socket.GetData(cell_introduce_ack.cell_bytes, cell_introduce_ack.cell_size);
+	if (RecvCell(cell_introduce_ack)) {
+		return 2;
+	}
 
 	FullDecryptCell(cell_introduce_ack.cell_bytes, cell_introduce_ack.cell_size);
 
@@ -391,12 +481,9 @@ int tor::Circuit::MakeIntroduce()
 	}
 	else {
 		cout << "Introduced with error." << endl;
-	}
 
-	delete[] service_key_hash;
-	delete[] encrypted_part;
-	delete[] buffer;
-	delete[] payload;
+		return 3;
+	}
 
 	return 0;
 }
@@ -404,11 +491,16 @@ int tor::Circuit::MakeIntroduce()
 int tor::Circuit::FinishRendezvous(CircuitRelay* onion_relay)
 {
 	Cell cell_rendezvous2(Cell::CellType::RELAY, Cell::PayloadCellType::RELAY_COMMAND_RENDEZVOUS2, Cell::CellMode::GET, circuit_id, stream_id);
-	circuit_relays[0].ssl_socket.GetData(cell_rendezvous2.cell_bytes, cell_rendezvous2.cell_size);
+	if (RecvCell(cell_rendezvous2)) {
+		return 1;
+	}
 
 	FullDecryptCell(cell_rendezvous2.cell_bytes, cell_rendezvous2.cell_size);
 
-	onion_relay->FinishTapHandshake(&cell_rendezvous2.cell_bytes[16], 148);
+	int code = onion_relay->FinishTapHandshake(&cell_rendezvous2.cell_bytes[16], 148);
+	if (code) {
+		return 2;
+	}
 
 	circuit_relays.push_back(*onion_relay);
 
@@ -417,6 +509,9 @@ int tor::Circuit::FinishRendezvous(CircuitRelay* onion_relay)
 	}
 	else {
 		cout << "Rendezvous error step 2." << endl;
+
+		delete[] rendezvous_cookie;
+		return 3;
 	}
 
 	delete[] rendezvous_cookie;
@@ -432,31 +527,73 @@ int tor::Circuit::EstablishIntroduction()
 
 	FullEncryptCell(cell_introduce1.cell_bytes, cell_introduce1.cell_size);
 
-	circuit_relays[0].ssl_socket.SendData(cell_introduce1.cell_bytes, cell_introduce1.cell_size);
+	if (SendCell(cell_introduce1)) {
+		return 1;
+	}
 
 
 	Cell cell_introduce_ack(Cell::CellType::RELAY, Cell::PayloadCellType::RELAY_COMMAND_INTRODUCE_ACK, Cell::CellMode::GET, circuit_id, stream_id);
-	circuit_relays[0].ssl_socket.GetData(cell_introduce_ack.cell_bytes, cell_introduce_ack.cell_size);
+	if (RecvCell(cell_introduce_ack)) {
+		return 1;
+	}
 
 	FullDecryptCell(cell_introduce_ack.cell_bytes, cell_introduce_ack.cell_size);
 
 	return 0;
 }
 
+int tor::Circuit::SendCell(Cell &cell)
+{
+	return SendCell(cell, circuit_relays[0]);
+}
+
+int tor::Circuit::SendCell(Cell &cell, CircuitRelay& relay_send_from)
+{
+	int send_code = relay_send_from.ssl_socket.SendData(cell.cell_bytes, cell.cell_size);
+	if (send_code) {
+		return 1;
+	}
+
+	return 0;
+}
+
+int tor::Circuit::RecvCell(Cell& cell)
+{
+	return RecvCell(cell, circuit_relays[0]);
+}
+
+int tor::Circuit::RecvCell(Cell& cell, CircuitRelay& relay_get_from)
+{
+	int recv_code = relay_get_from.ssl_socket.GetData(cell.cell_bytes, cell.cell_size);
+	if (recv_code) {
+		return 1;
+	}
+
+	return 0;
+}
+
 int tor::Circuit::ConnectToRelay(CircuitRelay& relay)
 {
-	relay.ConnectSsl();
+	if (relay.ConnectSsl()) {
+		return 1;
+	}
 
 	Cell cell_versions(Cell::CellType::VERSIONS, Cell::CellMode::SEND, 0);
 	cell_versions.FillVersions();
-	relay.ssl_socket.SendData(cell_versions.cell_bytes, cell_versions.cell_size);
+	if (SendCell(cell_versions, relay)) {
+		return 2;
+	}
 
 	Cell cell_versions_get(Cell::CellType::VERSIONS, Cell::CellMode::GET, 0);
-	relay.ssl_socket.GetData(cell_versions_get.cell_bytes, cell_versions_get.cell_size);
+	if (RecvCell(cell_versions_get, relay)) {
+		return 3;
+	}
 
 	Cell cell_netinfo(Cell::CellType::NETINFO, Cell::CellMode::SEND, 0);
 	cell_netinfo.FillNetInfo(relay.ssl_socket.sin);
-	relay.ssl_socket.SendData(cell_netinfo.cell_bytes, cell_netinfo.cell_size);
+	if (SendCell(cell_netinfo, relay)) {
+		return 4;
+	}
 
 	int onion_skin_size;
 	byte* onion_skin = new byte[186];
@@ -465,16 +602,23 @@ int tor::Circuit::ConnectToRelay(CircuitRelay& relay)
 	Cell cell_create2(Cell::CellType::CREATE2, Cell::CellMode::SEND, circuit_id);
 	cell_create2.FillCreate2(onion_skin, (short)onion_skin_size);
 
-	relay.ssl_socket.SendData(cell_create2.cell_bytes, cell_create2.cell_size);
-
-	Cell cell_created2(Cell::CellType::CREATED, Cell::CellMode::GET, circuit_id);
-	relay.ssl_socket.GetData(cell_created2.cell_bytes, cell_created2.cell_size);
-
-	// TODO: fix me
-	relay.FinishTapHandshake(&cell_created2.cell_bytes[7], cell_created2.cell_bytes[6]);
-
+	// clean up before errors
 	delete[] onion_skin;
 
+	if (SendCell(cell_create2, relay)) {
+		return 5;
+	}
+
+	Cell cell_created2(Cell::CellType::CREATED, Cell::CellMode::GET, circuit_id);
+	if (RecvCell(cell_created2, relay)) {
+		return 6;
+	}
+
+	// TODO: fix me
+	int code = relay.FinishTapHandshake(&cell_created2.cell_bytes[7], cell_created2.cell_bytes[6]);
+	if (code) {
+		return 7;
+	}
 	return 0;
 }
 
@@ -487,20 +631,28 @@ int tor::Circuit::ExtendToRelay(CircuitRelay& relay)
 	relay.CreateOnionSkin(onion_skin_size, onion_skin);
 
 	//cell_extend2.FillExtend2(onion_skin, onion_skin_size, relay.relay_ip, relay.relay_orport);
-	cell_extend.FillExtend(onion_skin, onion_skin_size, relay.relay_ip, relay.relay_orport, relay.relay_identity);
+	cell_extend.FillExtend(onion_skin, onion_skin_size, relay.relay_ip, relay.relay_orport, relay.relay_identity.data());
+
+	// clean up before errors
+	delete[] onion_skin;
+
 	cell_extend.ComputeDigest(circuit_relays[0].hash_forward_bytes);
 	FullEncryptCell(cell_extend.cell_bytes, cell_extend.cell_size);
-	circuit_relays[0].ssl_socket.SendData(cell_extend.cell_bytes, cell_extend.cell_size);
+	if (SendCell(cell_extend)) {
+		return 1;
+	}
 	
 	Cell cell_extended2(Cell::CellType::RELAY, Cell::PayloadCellType::RELAY_EXTENDED2, Cell::CellMode::GET, circuit_id);
-	circuit_relays[0].ssl_socket.GetData(cell_extended2.cell_bytes, cell_extended2.cell_size);
+	if (RecvCell(cell_extended2)) {
+		return 2;
+	}
 	FullDecryptCell(cell_extended2.cell_bytes, cell_extended2.cell_size);
 
 	// TODO: fix me
-	relay.FinishTapHandshake(&cell_extended2.cell_bytes[16], cell_extended2.cell_bytes[15]);
-
-	delete[] onion_skin;
-
+	int code = relay.FinishTapHandshake(&cell_extended2.cell_bytes[16], cell_extended2.cell_bytes[15]);
+	if (code) {
+		return 7;
+	}
 	return 0;
 }
 
@@ -563,4 +715,11 @@ tor::Relay& tor::Circuit::GetRandomRelayWithFlags(RelayFlags flags)
 	cout << "Found node: " << consensus.relays[random_int].relay_name << " ID: " << random_int << endl;
 
 	return consensus.relays[random_int];
+}
+
+int tor::Circuit::ClearCircuit()
+{
+	circuit_relays.clear();
+
+	return 0;
 }

@@ -9,11 +9,12 @@ namespace tor {
 		Consensus consensus;
 
 		vector<Service> connected_services;
+		Service *total_service = nullptr;
 
 		Tor();
 		~Tor();
 
-		void Initialize();
+		int Initialize();
 		int ConnectToOnionServer(string onion_url);
 		int GetOnionData(string query, string &output);
 	};

@@ -84,7 +84,7 @@ namespace tor {
 		int FillHttpGet(string service_address, string query);
 
 		// version 2
-		int FillFetchDescriptor(ByteSeq descriptor_id, string host_ip);
+		int FillFetchDescriptor(vector<byte> descriptor_id, string host_ip);
 		int FillRendezvous(byte* rendezvous_cookie);
 		int FillBeginStream(string service_address, short service_port);
 

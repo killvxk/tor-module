@@ -13,7 +13,7 @@ namespace tor {
 			DescriptorFetch = 0,
 			Introducing,
 			Rendezvous,
-		};
+		} circuit_type;
 
 		Consensus &consensus;
 		unsigned long circuit_id = 0;
@@ -24,7 +24,7 @@ namespace tor {
 		vector<CircuitRelay> circuit_relays;
 
 		// for descriptor fetch circuit
-		vector<ByteSeq> descriptors;
+		vector<vector<byte>> descriptors;
 		vector<Relay*> descriptor_relays;
 		string introduction_points_string;
 
@@ -40,7 +40,7 @@ namespace tor {
 		Circuit(string onion_url, Consensus &consensus, int circuit_id);
 		~Circuit();
 
-		int Initialize(string onion_url, Consensus& consensus, vector<ByteSeq> descriptors, vector<Relay*> descriptor_relays); // for descriptor fetch
+		int Initialize(string onion_url, Consensus& consensus, vector<vector<byte>> descriptors, vector<Relay*> descriptor_relays); // for descriptor fetch
 		int Initialize(string onion_url, Consensus& consensus); // for rendezvous
 		int Initialize(string onion_url, Consensus& consensus, IntroductionPoint *introduction_point, 
 			CircuitRelay*rendzvous_relay, CircuitRelay*onion_relay, byte *rendezvous_cookie); // for introducing
@@ -57,7 +57,7 @@ namespace tor {
 		// version 2
 		int CreateDirStream();
 		int GetFullStreamData(byte* &data, int& data_size);
-		int FetchDescriptor(ByteSeq descriptor_id, string host_ip, string &descriptor);
+		int FetchDescriptor(vector<byte> descriptor_id, string host_ip, string &descriptor);
 
 		int EstablishRendezvous(byte* cookie);
 
@@ -69,6 +69,11 @@ namespace tor {
 		int EstablishIntroduction();
 
 
+		int SendCell(Cell& cell);
+		int SendCell(Cell& cell, CircuitRelay &relay_send_from);
+		int RecvCell(Cell& cell);
+		int RecvCell(Cell& cell, CircuitRelay& relay_get_from);
+
 		int ConnectToRelay(CircuitRelay &relay);
 		int ExtendToRelay(CircuitRelay& relay);
 
@@ -76,6 +81,8 @@ namespace tor {
 		int FullDecryptCell(byte* cell_bytes, int cell_size);
 
 		Relay& GetRandomRelayWithFlags(RelayFlags flags);
+
+		int ClearCircuit();
 	};
 
 }// namespace tor
